@@ -4,7 +4,7 @@
 
 ## 프로젝트
 
-PDF 병합, 쪽 범위 추출, 쪽 단위 순서 편집(마우스 드래그)을 제공하는 tkinter GUI 프로그램입니다. 사용자는 주로 논문과 보고서 PDF를 다룹니다. 현재 코드는 `pdf_tool.py` 하나이며, 외부 라이브러리는 `pypdf`만 사용합니다. 이 버전을 "경량판"이라고 부릅니다.
+PDF 병합, 쪽 범위 추출, 쪽 단위 순서 편집(마우스 드래그)을 제공하는 tkinter GUI 프로그램입니다. 사용자는 주로 논문과 보고서 PDF를 다룹니다. 현재 코드는 GUI인 `pdf_tool.py`와 공통 모듈인 `pdf_common.py`로 이루어져 있으며, 외부 라이브러리는 `pypdf`만 사용합니다. 이 버전을 "경량판"이라고 부릅니다. 앞으로 만들 렌더링판도 `pdf_common.py`를 함께 사용합니다.
 
 ## 작업 원칙
 
@@ -18,12 +18,22 @@ PDF 병합, 쪽 범위 추출, 쪽 단위 순서 편집(마우스 드래그)을 
 - 작업은 별도 브랜치에서 진행하고, main에 직접 푸시하지 않습니다. 병합은 사용자가 풀 리퀘스트를 검토한 뒤에 결정합니다.
 - 코드를 바꾼 뒤에는 아래 테스트를 실행하고, 실행하지 못했다면 그 사실을 밝힙니다.
 
-## 현재 구조 (`pdf_tool.py`)
+## 현재 구조
 
+`pdf_common.py` (경량판과 렌더링판의 공통 모듈):
 - 처리 로직 함수: `open_pdf`, `parse_page_ranges`, `merge_pdfs`, `save_pages`, `run_background`
-- `MergeTab`: 파일 단위 병합 (첫 번째 탭)
 - `DragTree(ttk.Treeview)`: 마우스 드래그 정렬, Ctrl/Shift 선택, 자동 스크롤
+- `IS_MAC`: macOS 여부
+
+`pdf_tool.py` (경량판 GUI):
+- 위 이름들을 `from pdf_common import ...`로 가져옵니다. 기존 테스트가 `pdf_tool.parse_page_ranges`처럼 접근하므로 이 가져오기 방식을 유지합니다.
+- `MergeTab`: 파일 단위 병합 (첫 번째 탭)
 - `PageTab`: 쪽 범위 불러오기, 쪽 단위 편집, 저장, 실행 취소 (두 번째 탭)
+- `UNDO_LIMIT`, `main()`
+- `MergeTab`과 `PageTab`을 렌더링판과 어떻게 나누어 쓸지는 2단계에서 썸네일 구조를 설계할 때 결정합니다.
+
+구현 규칙:
+- 테스트는 `filedialog`, `messagebox`의 함수를 tkinter 모듈 객체에서 바꿔치기합니다. 따라서 코드에서는 `messagebox.showinfo(...)`처럼 모듈을 거쳐서 호출하고, `from tkinter.messagebox import showinfo`처럼 가져오지 않습니다.
 - tkinter는 메인 스레드에서만 호출합니다. 오래 걸리는 작업은 별도 스레드에서 실행하고, 결과는 큐로 전달합니다.
 - `PageTab`의 각 행은 Treeview 행 ID로 식별하며, `self.pages`가 행 ID를 (PDF 경로, 0부터 시작하는 쪽 인덱스)에 대응시킵니다.
 - 실행 취소는 작업 직전의 쪽 목록 `[(경로, 쪽 인덱스), ...]`을 저장하는 방식이며 최대 100단계입니다. 복원할 때는 목록을 다시 구성하고 스크롤 위치를 유지합니다. 단축키는 Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z입니다.
@@ -36,12 +46,12 @@ PDF 병합, 쪽 범위 추출, 쪽 단위 순서 편집(마우스 드래그)을 
 - 앞으로 UI를 확장한다면 왼쪽 상단의 메뉴 막대(VS Code처럼 파일, 편집, 도움말 등)와 우클릭 메뉴를 사용합니다. 지금은 만들지 않으며, 실행 취소도 단축키로만 제공합니다.
 - 인쇄된 쪽 번호로 범위를 지정하는 기능은 필요하지 않습니다.
 - 오른쪽 버튼 영역은 이미 충분하므로 버튼을 더 늘리지 않습니다.
+- 경량판과 렌더링판은 공통 모듈(`pdf_common.py`)을 함께 사용하는 구조로 합니다. 독립된 파일 2개 방식은 사용하지 않습니다.
 
 제안되었고 사용자의 이의가 없지만 최종 확정은 아닌 내용:
 - 렌더링 라이브러리로 pypdfium2를 사용합니다. PyMuPDF는 AGPL 또는 상용 라이선스라서 제외합니다. 근거는 `docs/extension_plan.md`에 있습니다.
 
 아직 결정되지 않은 내용 (작업 전에 사용자에게 확인):
-- 공통 모듈(`pdf_common.py`)로 분리할지, 경량판과 렌더링판을 독립된 파일로 둘지 (공통 모듈을 권장)
 - JPG 저장을 위해 Pillow를 포함할지 (포함을 권장, PNG만이라면 불필요)
 - 프로그램을 다른 사람에게 배포할지 (배포한다면 라이선스 문서 동봉이 필요)
 
@@ -52,9 +62,11 @@ pip install -r requirements.txt -r requirements-dev.txt
 # Linux에서는 python3-tk 와 xvfb 가 필요합니다.
 xvfb-run -a python tests/test_page_tab.py
 xvfb-run -a python tests/test_undo.py
+xvfb-run -a python tests/test_common.py
 python tests/test_merge.py
 ```
 
+- `test_common.py`는 `pdf_tool.py` 없이 `pdf_common.py`만 가져와서 처리 로직, `run_background`, `DragTree`를 검사하고, 마지막에 `pdf_tool.py`가 공통 모듈의 객체를 그대로 사용하는지 확인합니다.
 - `xvfb-run`이 없으면 `Xvfb :99 &` 실행 후 `DISPLAY=:99 python tests/test_undo.py`처럼 실행합니다.
 - 화면이 있는 환경에서는 `xvfb-run` 없이 그대로 실행해도 됩니다.
 - 드래그 테스트는 합성 이벤트로 수행합니다. `<ButtonPress-1>`, `<B1-Motion>`(state=0x100), `<ButtonRelease-1>` 순서이며, 좌표는 `tree.bbox(행)`로 구합니다.
@@ -79,7 +91,7 @@ python tests/test_merge.py
 
 ## 작업 순서 (안)
 
-1. 공통 모듈 분리. 경량판이 기존과 동일하게 동작하는지 회귀 테스트로 확인 (작은 작업)
+1. 공통 모듈 분리. 경량판이 기존과 동일하게 동작하는지 회귀 테스트로 확인 (작은 작업, 완료)
 2. 렌더링판: 큰 미리보기와 썸네일 목록. 지연 로딩과 캐시 (큰 작업)
 3. 이미지 저장: 쪽 범위, DPI(72, 150, 200, 300), 형식(PNG, JPG), 파일명 규칙 (중간 작업)
 4. 메뉴 막대와 우클릭 메뉴 (양쪽 판 공통, 중간 작업)

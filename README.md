@@ -10,6 +10,8 @@ pip install -r requirements.txt
 python pdf_tool.py
 ```
 
+실행에는 `pdf_tool.py`와 같은 폴더에 있는 공통 모듈 `pdf_common.py`가 함께 필요합니다.
+
 검증한 환경은 Python 3.12, pypdf 5.9.0입니다.
 
 ## 기능
@@ -39,6 +41,7 @@ python pdf_tool.py
 pip install -r requirements.txt -r requirements-dev.txt
 xvfb-run -a python tests/test_page_tab.py   # Linux. 화면이 있는 환경에서는 xvfb-run 없이 실행
 xvfb-run -a python tests/test_undo.py
+xvfb-run -a python tests/test_common.py
 python tests/test_merge.py
 ```
 
