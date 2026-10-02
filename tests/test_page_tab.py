@@ -145,8 +145,9 @@ print("8. 800쪽 자동 스크롤 드래그 OK")
 
 # ---------- 9. 위 방향 자동 스크롤 (800쪽 목록의 맨 아래 -> 위로) ----------
 tree.yview_moveto(1.0); pump()
-kids = tree.get_children()
-last_visible = tree.identify_row(h - 5)
+# 맨 아래까지 스크롤하면 마지막 행 아래에 행 높이보다 작은 빈 공간이 남을 수 있어서
+# 목록 바닥 근처 좌표로 행을 찾으면 빈 문자열이 나올 수 있음. 마지막 행을 직접 사용함.
+last_visible = tree.get_children()[-1]
 press(last_visible)
 grabbed_page = tree.set(last_visible, "page")
 motion(-30)
