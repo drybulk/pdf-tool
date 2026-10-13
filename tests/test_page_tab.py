@@ -73,6 +73,9 @@ def release(y):
     tree.event_generate("<ButtonRelease-1>", x=20, y=y); root.update()
 def rowy(idx):
     x, y, w, h = tree.bbox(tree.get_children()[idx]); return y+h//2
+def rowtop(idx):
+    """행의 위쪽 절반 좌표: 여기에 놓으면 그 행 앞에 들어감"""
+    x, y, w, h = tree.bbox(tree.get_children()[idx]); return y+2
 
 # ---------- 3. 단일 행 드래그: 맨 위(721)를 4번째 행 위치로 ----------
 kids = tree.get_children()
@@ -96,14 +99,12 @@ press(kids[1]); release(rowy(1))
 press(kids[2], state=0x4); release(rowy(2))       # Ctrl+클릭
 press(kids[6], state=0x4); release(rowy(6))
 assert len(tree.selection()) == 3
-# 선택된 2,3,7쪽 중 '3쪽'(index 2)을 잡고 index 5까지 끈다
+# 선택된 2,3,7쪽 중 '3쪽'(index 2)을 잡고 6쪽(index 5) 행의 아래쪽 절반에 놓는다 -> 6쪽 뒤에 모임
 press(tree.get_children()[2]); motion(rowy(4)); motion(rowy(5)); release(rowy(5)); pump(0.1)
 print("   다중 드래그 결과:", order())
 o = order()
-# 2,3,7이 상대 순서(2<3<7)를 유지하며 3칸 아래로 이동했는지 확인
-assert o.index("2") < o.index("3") < o.index("7")
-assert o.index("3") == 5, o
-assert posok() and len(o) == 10
+assert o == ["1","4","5","6","2","3","7","8","9","10"], o
+assert posok() and len(tree.selection()) == 3
 print("5. 다중 선택 드래그 OK")
 
 # ---------- 6. Shift 범위 선택 + 버튼 이동 ----------
@@ -137,8 +138,11 @@ motion(h + 40)                               # 목록 아래 바깥으로 이동
 t0 = time.time()
 while time.time() - t0 < 15.0:
     pump(0.05)
-    if order()[-1] == "1": break
+    if tree.yview()[1] >= 1.0: break
+# 끄는 동안에는 행이 움직이지 않고 표시선만 보여야 함
+assert order()[0] == "1" and tree._indicator.winfo_ismapped()
 release(h + 40); pump(0.1)
+assert not tree._indicator.winfo_ismapped()
 print("   자동 스크롤 경과: %.1f초, 1쪽의 위치: %d" % (time.time()-t0, order().index("1")+1))
 assert order()[-1] == "1" and posok()
 print("8. 800쪽 자동 스크롤 드래그 OK")
@@ -154,7 +158,8 @@ motion(-30)
 t0 = time.time()
 while time.time() - t0 < 12.0:
     pump(0.05)
-    if order()[0] == grabbed_page: break
+    if tree.yview()[0] <= 0.0: break
+assert order()[-1] == grabbed_page and tree._indicator.winfo_ismapped()
 release(-30); pump(0.1)
 print("   위쪽 자동 스크롤 경과: %.1f초" % (time.time()-t0))
 assert order()[0] == grabbed_page and posok()
@@ -166,9 +171,9 @@ page.range_var.set("721-723"); page.load_pdfs(); pump()
 filedialog.askopenfilenames = lambda **k: (SMALL,)
 page.range_var.set("2, 4-5"); page.load_pdfs(); pump()
 print("   현재 목록:", [(tree.set(i,'file'), tree.set(i,'page')) for i in tree.get_children()])
-# 마지막 행(S5)을 맨 위로 드래그
+# 마지막 행(S5)을 첫 행의 위쪽 절반에 놓아서 맨 위로 옮김
 kids = tree.get_children()
-press(kids[-1]); motion(rowy(0)); release(rowy(0)); pump(0.1)
+press(kids[-1]); motion(rowtop(0)); release(rowtop(0)); pump(0.1)
 filedialog.asksaveasfilename = lambda **k: os.path.join(TMP, "result.pdf")
 msgs.clear(); page.save()
 t0 = time.time()

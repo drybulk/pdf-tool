@@ -13,6 +13,7 @@ import queue
 import re
 import sys
 import threading
+import tkinter as tk
 from tkinter import ttk
 
 from pypdf import PdfReader, PdfWriter
@@ -153,24 +154,40 @@ def run_background(widget, work, on_progress, on_done, on_error):
 # ---------------------------------------------------------------------------
 class DragTree(ttk.Treeview):
     """
-    - 행을 마우스로 끌어서 순서를 바꿀 수 있습니다. (여러 행을 선택한 채 끌면 함께 이동)
+    - 행을 마우스로 끌어서 순서를 바꿀 수 있습니다. 끄는 동안 놓을 위치에 가로 표시선이 나타나고,
+      마우스를 놓으면 선택한 행들이 상대 순서를 유지한 채 그 위치에 모입니다.
+    - 표시선은 마우스가 행의 위쪽 절반에 있으면 그 행 앞, 아래쪽 절반에 있으면 그 행 뒤에 나타납니다.
     - 끄는 중 목록 위/아래 바깥으로 마우스를 가져가면 자동으로 스크롤됩니다.
     - Ctrl+클릭: 개별 선택 추가/해제, Shift+클릭: 범위 선택
+    - 행을 옮기면 옮긴 행이 화면에 보이도록 스크롤하고, 잠깐 다른 색으로 강조합니다.
     - columns에는 현재 순서를 표시하는 "pos" 열이 반드시 포함되어야 합니다.
     """
 
+    SELECT_BG, SELECT_FG = "#2a6fdb", "#ffffff"  # 선택한 행 (목록에 포커스가 없어도 같은 색)
+    FLASH_BG, FLASH_FG = "#ffb300", "#000000"    # 옮긴 직후 잠깐 표시하는 강조색
+    FLASH_MS = 600
+    INDICATOR_COLOR = "#d32f2f"                  # 놓을 위치 표시선
+    _count = 0
+
     def __init__(self, master, on_reorder=None, **kw):
+        # 위젯마다 별도의 스타일을 사용해서 강조색 변경이 다른 목록에 영향을 주지 않게 함
+        DragTree._count += 1
+        self.style_name = f"Drag{DragTree._count}.Treeview"
+        self._style = ttk.Style(master)
+        kw.setdefault("style", self.style_name)
         super().__init__(master, **kw)
+        self._set_select_colors(self.SELECT_BG, self.SELECT_FG)
         # on_reorder(이전_행_순서): 드래그로 순서가 실제로 바뀐 뒤 호출됩니다.
         self.on_reorder = on_reorder
         self._order_before = ()
         self._dragging = False
         self._moved = False
-        self._grab = 0  # 마우스로 잡은 행의 현재 위치
         self._last_y = 0
         self._press_item = None
         self._anchor = None
         self._tick_id = None
+        self._flash_id = None
+        self._indicator = tk.Frame(self, height=3, bg=self.INDICATOR_COLOR, bd=0, highlightthickness=0)
         # macOS에서는 Command 키(0x8)도 개별 선택에 사용
         self._multi_mask = 0x4 | (0x8 if sys.platform == "darwin" else 0)
 
@@ -185,6 +202,32 @@ class DragTree(ttk.Treeview):
         for i in range(max(lo, 0), hi + 1):
             self.set(children[i], "pos", i + 1)
 
+    # ---- 옮긴 행 표시 ----
+    def _set_select_colors(self, bg, fg):
+        self._style.map(self.style_name, background=[("selected", bg)], foreground=[("selected", fg)])
+
+    def flash_selection(self):
+        """선택한 행을 잠깐 강조색으로 표시했다가 원래 선택 색으로 되돌립니다."""
+        if self._flash_id is not None:
+            self.after_cancel(self._flash_id)
+        self._set_select_colors(self.FLASH_BG, self.FLASH_FG)
+        self._flash_id = self.after(self.FLASH_MS, self._end_flash)
+
+    def _end_flash(self):
+        self._flash_id = None
+        self._set_select_colors(self.SELECT_BG, self.SELECT_FG)
+
+    def reveal_selection(self):
+        """선택한 행이 화면에 보이도록 스크롤합니다. 한 화면에 다 들어가지 않으면 첫 행을 우선합니다."""
+        sel = sorted(self.selection(), key=self.index)
+        if sel:
+            self.see(sel[-1])
+            self.see(sel[0])
+
+    def _after_move(self):
+        self.reveal_selection()
+        self.flash_selection()
+
     # ---- 버튼으로도 사용할 수 있는 이동 기능 ----
     def shift_selection(self, step):
         """선택한 행들을 step(-1 또는 +1)칸 이동합니다. 끝에 닿아 이동하지 못하면 False."""
@@ -197,21 +240,31 @@ class DragTree(ttk.Treeview):
         for i in idx if step < 0 else reversed(idx):
             self.move(children[i], "", i + step)
         self.renumber(idx[0] - 1, idx[-1] + 1)
+        self._after_move()
         return True
 
     def move_selection_to(self, position):
-        """선택한 행들(현재 상대 순서 유지)을 position번째(1부터) 위치로 옮깁니다."""
+        """선택한 행들(현재 상대 순서 유지)을 position번째(1부터) 위치로 옮깁니다. 순서가 바뀌면 True."""
+        selected = set(self.selection())
+        others = [c for c in self.get_children() if c not in selected]
+        return self._gather_selection(min(max(position - 1, 0), len(others)))
+
+    def _gather_selection(self, pos):
+        """선택한 행들을 선택하지 않은 행 목록의 pos번째(0부터) 자리에 모읍니다. 순서가 바뀌면 True."""
         children = list(self.get_children())
         selected = set(self.selection())
         moving = [c for c in children if c in selected]
         if not moving:
-            return
+            return False
         others = [c for c in children if c not in selected]
-        pos = min(max(position - 1, 0), len(others))
-        for i, iid in enumerate(others[:pos] + moving + others[pos:]):
+        new_order = others[:pos] + moving + others[pos:]
+        if new_order == children:
+            return False
+        for i, iid in enumerate(new_order):
             self.move(iid, "", i)
         self.renumber()
-        self.see(moving[0])
+        self._after_move()
+        return True
 
     # ---- 마우스 처리 ----
     def _on_press(self, event):
@@ -240,7 +293,6 @@ class DragTree(ttk.Treeview):
         self._anchor = item
         self._press_item = item
         self._order_before = self.get_children()
-        self._grab = self.index(item)
         self._last_y = event.y
         self._moved = False
         self._dragging = True
@@ -251,7 +303,10 @@ class DragTree(ttk.Treeview):
         if not self._dragging:
             return None
         self._last_y = event.y
-        self._follow()
+        # 누른 행을 벗어나야 드래그로 간주함 (같은 행 안에서 조금 움직인 것은 클릭으로 처리)
+        if not self._moved and self.identify_row(event.y) != self._press_item:
+            self._moved = True
+        self._update_indicator()
         return "break"
 
     def _on_release(self, event):
@@ -261,20 +316,26 @@ class DragTree(ttk.Treeview):
         if self._tick_id is not None:
             self.after_cancel(self._tick_id)
             self._tick_id = None
+        self._indicator.place_forget()
         # 끌지 않고 클릭만 했다면 해당 행 하나만 선택
-        if not self._moved and self._press_item and self.exists(self._press_item):
-            self.selection_set(self._press_item)
-        if self._moved and self.on_reorder and self.get_children() != self._order_before:
+        if not self._moved:
+            if self._press_item and self.exists(self._press_item):
+                self.selection_set(self._press_item)
+            return "break"
+        slot = self._drop_slot(event.y)
+        before = list(self.get_children())[:slot]
+        selected = set(self.selection())
+        if self._gather_selection(sum(1 for c in before if c not in selected)) and self.on_reorder:
             self.on_reorder(self._order_before)
         return "break"
 
     # ---- 드래그 동작 ----
     def _tick(self):
-        """마우스 버튼을 누르고 있는 동안 주기적으로 자동 스크롤과 위치 추적을 수행합니다."""
+        """마우스 버튼을 누르고 있는 동안 주기적으로 자동 스크롤과 표시선 갱신을 수행합니다."""
         if not self._dragging:
             return
         self._auto_scroll()
-        self._follow()
+        self._update_indicator()
         self._tick_id = self.after(30, self._tick)
 
     def _first_visible(self):
@@ -295,34 +356,49 @@ class DragTree(ttk.Treeview):
         elif y > h:
             self.yview_scroll(1 + (y - h) // 10, "units")
 
-    def _target_index(self, y):
-        """마우스 y 좌표가 가리키는 행의 위치. 목록 밖이면 보이는 첫/마지막 행."""
-        row = self.identify_row(y)
-        if row:
-            return self.index(row)
+    def _drop_slot(self, y):
+        """
+        마우스 y 좌표에 놓으면 들어갈 자리(0부터, 행 사이의 경계 번호)를 반환합니다.
+        행의 위쪽 절반이면 그 행 앞, 아래쪽 절반이면 그 행 뒤입니다.
+        목록 위쪽 바깥이면 보이는 첫 행 앞, 아래쪽 바깥이면 보이는 마지막 행 뒤입니다.
+        """
+        children = self.get_children()
+        if not children:
+            return 0
         if y < self._first_row_top():
             return self._first_visible()
+        # 목록 아래 바깥 좌표에서는 identify_row가 화면에 보이지 않는 행을 돌려줄 수 있음.
+        # 그런 행은 bbox가 비어 있으므로, 화면 안의 좌표이고 bbox가 있을 때만 그 행을 기준으로 삼음.
+        row = self.identify_row(y) if y < self.winfo_height() else ""
+        box = self.bbox(row) if row else ""
+        if box:
+            _, top, _, height = box
+            index = self.index(row)
+            return index if y < top + height / 2 else index + 1
         last = self.identify_row(self.winfo_height() - 1)
-        return self.index(last) if last else len(self.get_children()) - 1
+        return self.index(last) + 1 if last else len(children)
 
-    def _follow(self):
-        """잡고 있는 행(들)이 마우스 위치를 따라가도록 이동합니다."""
-        if not self._dragging or not self.get_children():
+    def _slot_y(self, slot):
+        """slot 경계의 화면 y 좌표. 경계 주변의 행이 화면에 없으면 None."""
+        children = self.get_children()
+        if slot < len(children):
+            box = self.bbox(children[slot])
+            if box:
+                return box[1]
+        if slot > 0:
+            box = self.bbox(children[slot - 1])
+            if box:
+                return box[1] + box[3]
+        return None
+
+    def _update_indicator(self):
+        if not self._dragging or not self._moved:
             return
-        target = self._target_index(self._last_y)
-        if target == self._grab:
+        y = self._slot_y(self._drop_slot(self._last_y))
+        if y is None:
+            self._indicator.place_forget()
             return
-        sel = self.selection()
-        if len(sel) == 1:
-            cur = self.index(sel[0])
-            self.move(sel[0], "", target)
-            self.renumber(min(cur, target), max(cur, target))
-            self._grab = target
-            self._moved = True
-            return
-        while self._grab != target:
-            step = 1 if target > self._grab else -1
-            if not self.shift_selection(step):
-                break
-            self._grab += step
-            self._moved = True
+        thickness = int(self._indicator.cget("height"))
+        y = min(max(y - thickness // 2, self._first_row_top()), self.winfo_height() - thickness)
+        self._indicator.place(x=0, y=y, relwidth=1)
+        self._indicator.lift()

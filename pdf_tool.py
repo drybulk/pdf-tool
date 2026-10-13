@@ -36,7 +36,7 @@ UNDO_LIMIT = 100  # 실행 취소로 되돌릴 수 있는 최대 단계 수
 class MergeTab(ttk.Frame):
     def __init__(self, master):
         super().__init__(master)
-        self.items = []  # [(경로, 쪽수), ...]
+        self.files = {}  # 행 ID -> (PDF 경로, 쪽수)
         self.working = False
         self._build_widgets()
 
@@ -45,7 +45,7 @@ class MergeTab(ttk.Frame):
 
         ttk.Label(
             self,
-            text="합칠 PDF를 추가하고, 위/아래 버튼으로 순서를 조정한 뒤 '병합하기'를 누르세요.",
+            text="합칠 PDF를 추가하고, 행을 마우스로 끌거나 위/아래 버튼으로 순서를 조정한 뒤 '병합하기'를 누르세요.",
         ).pack(anchor="w", **pad)
 
         body = ttk.Frame(self)
@@ -53,10 +53,20 @@ class MergeTab(ttk.Frame):
 
         list_frame = ttk.Frame(body)
         list_frame.pack(side="left", fill="both", expand=True)
-        self.listbox = tk.Listbox(list_frame, selectmode="extended", activestyle="none")
-        scroll = ttk.Scrollbar(list_frame, orient="vertical", command=self.listbox.yview)
-        self.listbox.configure(yscrollcommand=scroll.set)
-        self.listbox.pack(side="left", fill="both", expand=True)
+        self.tree = DragTree(
+            list_frame, columns=("pos", "name", "pages", "folder"), show="headings", selectmode="extended",
+        )
+        self.tree.heading("pos", text="순서")
+        self.tree.heading("name", text="파일 이름")
+        self.tree.heading("pages", text="쪽수")
+        self.tree.heading("folder", text="폴더")
+        self.tree.column("pos", width=50, anchor="center", stretch=False)
+        self.tree.column("name", width=220, anchor="w")
+        self.tree.column("pages", width=60, anchor="center", stretch=False)
+        self.tree.column("folder", width=250, anchor="w")
+        scroll = ttk.Scrollbar(list_frame, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=scroll.set)
+        self.tree.pack(side="left", fill="both", expand=True)
         scroll.pack(side="right", fill="y")
 
         btns = ttk.Frame(body)
@@ -85,16 +95,13 @@ class MergeTab(ttk.Frame):
         self.progress = ttk.Progressbar(self, mode="determinate")
         self.progress.pack(fill="x", padx=10, pady=(0, 10))
 
-    def refresh(self, keep_selection=()):
-        self.listbox.delete(0, tk.END)
-        for i, (path, pages) in enumerate(self.items, start=1):
-            self.listbox.insert(
-                tk.END, f"{i}. {os.path.basename(path)}  ({pages}쪽)  -  {os.path.dirname(path)}"
-            )
-        for idx in keep_selection:
-            self.listbox.selection_set(idx)
-        total = sum(p for _, p in self.items)
-        self.status.set(f"파일 {len(self.items)}개, 총 {total}쪽")
+    def ordered_paths(self):
+        """현재 화면 순서의 PDF 경로 목록"""
+        return [self.files[iid][0] for iid in self.tree.get_children()]
+
+    def update_status(self):
+        total = sum(pages for _, pages in self.files.values())
+        self.status.set(f"파일 {len(self.files)}개, 총 {total}쪽")
 
     def add_files(self):
         paths = filedialog.askopenfilenames(
@@ -104,38 +111,39 @@ class MergeTab(ttk.Frame):
         for path in paths:
             try:
                 pages = len(open_pdf(path).pages)
-                self.items.append((path, pages))
             except ValueError as e:
                 errors.append(f"{os.path.basename(path)}: {e}")
-        self.refresh()
+                continue
+            iid = self.tree.insert(
+                "", "end", values=(0, os.path.basename(path), pages, os.path.dirname(path))
+            )
+            self.files[iid] = (path, pages)
+        self.tree.renumber()
+        self.update_status()
         if errors:
             messagebox.showwarning("일부 파일을 추가하지 못했습니다", "\n".join(errors))
 
     def remove_selected(self):
-        for i in reversed(self.listbox.curselection()):
-            del self.items[i]
-        self.refresh()
+        sel = self.tree.selection()
+        for iid in sel:
+            self.files.pop(iid, None)
+        if sel:
+            self.tree.delete(*sel)
+            self.tree.renumber()
+        self.update_status()
 
     def clear_all(self):
-        self.items.clear()
-        self.refresh()
+        self.tree.delete(*self.tree.get_children())
+        self.files.clear()
+        self.update_status()
 
     def move_selected(self, delta):
-        sel = list(self.listbox.curselection())
-        if not sel:
-            return
-        if delta < 0 and sel[0] == 0:
-            return
-        if delta > 0 and sel[-1] == len(self.items) - 1:
-            return
-        for i in sel if delta < 0 else reversed(sel):
-            self.items[i], self.items[i + delta] = self.items[i + delta], self.items[i]
-        self.refresh(keep_selection=[i + delta for i in sel])
+        self.tree.shift_selection(delta)
 
     def start_merge(self):
         if self.working:
             return
-        if len(self.items) < 2:
+        if len(self.files) < 2:
             messagebox.showinfo("안내", "PDF를 2개 이상 추가해 주세요.")
             return
 
@@ -147,7 +155,7 @@ class MergeTab(ttk.Frame):
         )
         if not output:
             return
-        paths = [p for p, _ in self.items]
+        paths = self.ordered_paths()
         if os.path.abspath(output) in [os.path.abspath(p) for p in paths]:
             messagebox.showerror("오류", "저장 경로가 입력 파일과 같습니다. 다른 이름으로 저장해 주세요.")
             return
@@ -393,14 +401,10 @@ class PageTab(ttk.Frame):
         before = self.snapshot()
         if self.tree.shift_selection(step):
             self._push_undo(before)
-            sel = self.tree.selection()
-            if sel:
-                self.tree.see(sel[0])
 
     def move_to(self, position):
         before = self.snapshot()
-        self.tree.move_selection_to(position)
-        if self.snapshot() != before:
+        if self.tree.move_selection_to(position):
             self._push_undo(before)
 
     def move_to_dialog(self):

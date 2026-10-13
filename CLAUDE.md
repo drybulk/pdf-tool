@@ -22,12 +22,17 @@ PDF 병합, 쪽 범위 추출, 쪽 단위 순서 편집(마우스 드래그)을 
 
 `pdf_common.py` (경량판과 렌더링판의 공통 모듈):
 - 처리 로직 함수: `open_pdf`, `parse_page_ranges`, `merge_pdfs`, `save_pages`, `run_background`
-- `DragTree(ttk.Treeview)`: 마우스 드래그 정렬, Ctrl/Shift 선택, 자동 스크롤
+- `DragTree(ttk.Treeview)`: 마우스 드래그 정렬, Ctrl/Shift 선택, 자동 스크롤. 두 탭의 목록이 모두 이 위젯을 사용합니다.
+  - 끄는 동안에는 행을 움직이지 않고, 놓을 위치에 빨간 가로 표시선(`_indicator`, 목록 위에 `place()`로 겹친 Frame)을 보여 줍니다. 마우스가 행의 위쪽 절반에 있으면 그 행 앞, 아래쪽 절반에 있으면 그 행 뒤가 놓을 위치입니다(`_drop_slot`).
+  - 마우스를 놓으면 선택한 행들이 상대 순서를 유지한 채 그 위치에 모입니다(`_gather_selection`). "위치 지정 이동"(`move_selection_to`)도 같은 함수를 사용합니다.
+  - 누른 행을 벗어나야 드래그로 간주합니다. 같은 행 안에서 놓으면 클릭으로 처리해서 그 행 하나만 선택합니다.
+  - 행을 옮기면(드래그, `shift_selection`, `move_selection_to`) 옮긴 행이 보이도록 스크롤하고(`reveal_selection`), 선택 색을 0.6초 동안 주황색으로 바꿨다가 되돌립니다(`flash_selection`).
+  - 선택 색은 위젯마다 따로 만든 스타일(`Drag숫자.Treeview`)의 `map`으로 지정합니다. 그래서 목록에 포커스가 없어도 선택 색이 흐려지지 않고, 강조색 변경이 다른 목록에 영향을 주지 않습니다.
 - `IS_MAC`: macOS 여부
 
 `pdf_tool.py` (경량판 GUI):
 - 위 이름들을 `from pdf_common import ...`로 가져옵니다. 기존 테스트가 `pdf_tool.parse_page_ranges`처럼 접근하므로 이 가져오기 방식을 유지합니다.
-- `MergeTab`: 파일 단위 병합 (첫 번째 탭)
+- `MergeTab`: 파일 단위 병합 (첫 번째 탭). 목록은 `DragTree`이며 열은 순서, 파일 이름, 쪽수, 폴더입니다. `self.files`가 행 ID를 (PDF 경로, 쪽수)에 대응시키고, 병합 순서는 화면의 행 순서를 따릅니다. 실행 취소 기능은 없습니다.
 - `PageTab`: 쪽 범위 불러오기, 쪽 단위 편집, 저장, 실행 취소 (두 번째 탭)
 - `UNDO_LIMIT`, `main()`
 - `MergeTab`과 `PageTab`을 렌더링판과 어떻게 나누어 쓸지는 2단계에서 썸네일 구조를 설계할 때 결정합니다.
@@ -63,13 +68,18 @@ pip install -r requirements.txt -r requirements-dev.txt
 xvfb-run -a python tests/test_page_tab.py
 xvfb-run -a python tests/test_undo.py
 xvfb-run -a python tests/test_common.py
+xvfb-run -a python tests/test_merge_tab.py
 python tests/test_merge.py
 ```
 
 - `test_common.py`는 `pdf_tool.py` 없이 `pdf_common.py`만 가져와서 처리 로직, `run_background`, `DragTree`를 검사하고, 마지막에 `pdf_tool.py`가 공통 모듈의 객체를 그대로 사용하는지 확인합니다.
 - `xvfb-run`이 없으면 `Xvfb :99 &` 실행 후 `DISPLAY=:99 python tests/test_undo.py`처럼 실행합니다.
 - 화면이 있는 환경에서는 `xvfb-run` 없이 그대로 실행해도 됩니다.
+- `test_merge_tab.py`는 병합 탭의 파일 추가, 표 표시, 드래그, 버튼 이동, 삭제, 병합 결과 순서를 검사합니다.
 - 드래그 테스트는 합성 이벤트로 수행합니다. `<ButtonPress-1>`, `<B1-Motion>`(state=0x100), `<ButtonRelease-1>` 순서이며, 좌표는 `tree.bbox(행)`로 구합니다.
+- 놓는 좌표가 행의 정확한 가운데(`y + h//2`)이면 아래쪽 절반으로 판정되어 그 행 뒤에 놓입니다. 행 앞에 놓으려면 행 위쪽 가까이(`y + 2`)를 사용합니다.
+- 자동 스크롤 테스트는 끄는 동안 순서가 바뀌지 않으므로, `tree.yview()`가 끝에 닿을 때까지 기다린 뒤 마우스를 놓습니다.
+- 행을 옮긴 직후 0.6초 동안은 선택 색이 강조색입니다. 선택 색을 검사하려면 그 시간만큼 기다려야 합니다.
 
 ## 주의할 점 (확인된 사항)
 
@@ -78,6 +88,8 @@ python tests/test_merge.py
 - 단축키는 `bind_all(..., add="+")`로 등록하고 `winfo_ismapped()`로 현재 탭일 때만 처리합니다. 입력 칸(Entry)에서는 기본 동작을 유지합니다.
 - 열 머리글 클릭과 열 크기 조절은 Treeview의 기본 동작에 맡기며, 행 클릭만 `DragTree`가 처리합니다.
 - 드래그 중 자동 스크롤 속도는 마우스가 목록 밖으로 벗어난 거리 10픽셀마다 한 칸씩 늘어납니다(30ms 주기).
+- `identify_row(y)`는 목록 아래 바깥 좌표에서 화면에 보이지 않는 행을 돌려줄 수 있고, 그 행의 `bbox`는 빈 값입니다. `bbox` 결과를 분해하기 전에 비어 있는지 확인해야 합니다.
+- 맨 아래까지 스크롤하면 마지막 행 아래에 행 높이보다 작은 빈 공간이 남을 수 있습니다. 그 공간의 좌표에서는 `identify_row`가 빈 문자열을 돌려줍니다. 빈 공간의 크기는 창 높이와 운영체제의 행 높이에 따라 달라집니다(Windows에서 확인).
 - Xvfb에는 창 관리자가 없으므로 테스트에서 단축키 이벤트를 보내기 전에 `focus_force()`가 필요합니다.
 
 ## 렌더링판 설계 근거 (측정과 조사 결과)
