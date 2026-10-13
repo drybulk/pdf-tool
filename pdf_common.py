@@ -165,7 +165,7 @@ class DragTree(ttk.Treeview):
 
     SELECT_BG, SELECT_FG = "#2a6fdb", "#ffffff"  # 선택한 행 (목록에 포커스가 없어도 같은 색)
     FLASH_BG, FLASH_FG = "#ffb300", "#000000"    # 옮긴 직후 잠깐 표시하는 강조색
-    FLASH_MS = 600
+    FLASH_MS = 400
     INDICATOR_COLOR = "#d32f2f"                  # 놓을 위치 표시선
     _count = 0
 
