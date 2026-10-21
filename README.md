@@ -75,7 +75,7 @@ xvfb-run -a python tests/test_render.py
 
 Linux에서는 `python3-tk`와 `xvfb`가 필요합니다.
 
-렌더링 속도는 `python tools/bench_render.py 파일.pdf [--pages 100]`으로 측정할 수 있습니다. 썸네일, 미리보기, 200/300 DPI 렌더링의 쪽당 시간을 출력합니다.
+렌더링 속도는 `python tools/bench_render.py 파일.pdf [--pages 100]`으로 측정할 수 있습니다. 썸네일, 미리보기, 200/300 DPI 렌더링의 쪽당 시간을 출력합니다. 각 쪽을 처음 그리는 시간을 따로 보여 주고, 시간이 가장 길었던 쪽 번호와 저장용 PNG를 만드는 시간도 함께 출력합니다.
 
 ## 문서
 
