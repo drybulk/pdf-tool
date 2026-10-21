@@ -279,6 +279,11 @@ class DragTree(ttk.Treeview):
         if not item:
             self.selection_set(())
             return "break"
+        # 마지막으로 클릭한 행을 Treeview의 포커스 행으로 기록함. 선택이 바뀌지 않는 클릭도 있으므로
+        # (이미 선택된 행 클릭) 별도의 가상 이벤트로 알림. 렌더링판의 미리보기가 이 행을 따라감.
+        if self.focus() != item:
+            self.focus(item)
+            self.event_generate("<<RowFocus>>")
         if event.state & self._multi_mask:
             self.selection_toggle(item)
             self._anchor = item
@@ -599,8 +604,7 @@ class PageTab(ttk.Frame):
         body = ttk.Frame(self)
         body.pack(fill="both", expand=True, **pad)
 
-        list_frame = ttk.Frame(body)
-        list_frame.pack(side="left", fill="both", expand=True)
+        list_frame = self._make_list_frame(body)
         self.tree = DragTree(
             list_frame, on_reorder=self._on_reorder,
             columns=("pos", "file", "page"), show="headings", selectmode="extended",
@@ -615,6 +619,7 @@ class PageTab(ttk.Frame):
         self.tree.configure(yscrollcommand=scroll.set)
         self.tree.pack(side="left", fill="both", expand=True)
         scroll.pack(side="right", fill="y")
+        self.tree_scroll = scroll
         self.tree.bind("<Delete>", lambda e: self.delete_selected())
         self.tree.bind("<Control-a>", self.select_all)
         if IS_MAC:
@@ -650,6 +655,12 @@ class PageTab(ttk.Frame):
 
         self.progress = ttk.Progressbar(self, mode="determinate")
         self.progress.pack(fill="x", padx=10, pady=(0, 10))
+
+    def _make_list_frame(self, body):
+        """쪽 목록을 담을 프레임을 만들어 배치합니다. 렌더링판은 이 메서드를 바꿔서 미리보기 영역을 함께 둡니다."""
+        list_frame = ttk.Frame(body)
+        list_frame.pack(side="left", fill="both", expand=True)
+        return list_frame
 
     # ---- 불러오기 ----
     def load_pdfs(self):
