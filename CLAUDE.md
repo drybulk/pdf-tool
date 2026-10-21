@@ -28,14 +28,14 @@ PDF 병합, 쪽 범위 추출, 쪽 단위 순서 편집(마우스 드래그)을 
   - 누른 행을 벗어나야 드래그로 간주합니다. 같은 행 안에서 놓으면 클릭으로 처리해서 그 행 하나만 선택합니다.
   - 행을 옮기면(드래그, `shift_selection`, `move_selection_to`) 옮긴 행이 보이도록 스크롤하고(`reveal_selection`), 선택 색을 0.4초 동안 주황색으로 바꿨다가 되돌립니다(`flash_selection`).
   - 선택 색은 위젯마다 따로 만든 스타일(`Drag숫자.Treeview`)의 `map`으로 지정합니다. 그래서 목록에 포커스가 없어도 선택 색이 흐려지지 않고, 강조색 변경이 다른 목록에 영향을 주지 않습니다.
-- `IS_MAC`: macOS 여부
-
-`pdf_tool.py` (경량판 GUI):
-- 위 이름들을 `from pdf_common import ...`로 가져옵니다. 기존 테스트가 `pdf_tool.parse_page_ranges`처럼 접근하므로 이 가져오기 방식을 유지합니다.
+- `IS_MAC`: macOS 여부, `UNDO_LIMIT`: 실행 취소 최대 단계 수
 - `MergeTab`: 파일 단위 병합 (첫 번째 탭). 목록은 `DragTree`이며 열은 순서, 파일 이름, 쪽수, 폴더입니다. `self.files`가 행 ID를 (PDF 경로, 쪽수)에 대응시키고, 병합 순서는 화면의 행 순서를 따릅니다. 실행 취소 기능은 없습니다.
 - `PageTab`: 쪽 범위 불러오기, 쪽 단위 편집, 저장, 실행 취소 (두 번째 탭)
-- `UNDO_LIMIT`, `main()`
-- `MergeTab`과 `PageTab`을 렌더링판과 어떻게 나누어 쓸지는 2단계에서 썸네일 구조를 설계할 때 결정합니다.
+- 렌더링판은 `MergeTab`을 그대로 사용하고, `PageTab`을 상속해서 썸네일과 미리보기를 덧붙입니다.
+
+`pdf_tool.py` (경량판 GUI):
+- `main()`만 들어 있습니다. 창을 만들고 공통 모듈의 `MergeTab`, `PageTab`을 탭으로 붙입니다.
+- 공통 모듈의 이름들을 `from pdf_common import ...`로 가져와 `__all__`로 다시 내보냅니다. 기존 테스트가 `pdf_tool.PageTab`, `pdf_tool.UNDO_LIMIT`처럼 접근하므로 이 방식을 유지합니다.
 
 구현 규칙:
 - 테스트는 `filedialog`, `messagebox`의 함수를 tkinter 모듈 객체에서 바꿔치기합니다. 따라서 코드에서는 `messagebox.showinfo(...)`처럼 모듈을 거쳐서 호출하고, `from tkinter.messagebox import showinfo`처럼 가져오지 않습니다.
@@ -72,7 +72,7 @@ xvfb-run -a python tests/test_merge_tab.py
 python tests/test_merge.py
 ```
 
-- `test_common.py`는 `pdf_tool.py` 없이 `pdf_common.py`만 가져와서 처리 로직, `run_background`, `DragTree`를 검사하고, 마지막에 `pdf_tool.py`가 공통 모듈의 객체를 그대로 사용하는지 확인합니다.
+- `test_common.py`는 `pdf_tool.py` 없이 `pdf_common.py`만 가져와서 처리 로직, `run_background`, `DragTree`를 검사하고, 마지막에 `pdf_tool.py`가 공통 모듈의 객체(두 탭 클래스 포함)를 그대로 사용하는지 확인합니다.
 - `xvfb-run`이 없으면 `Xvfb :99 &` 실행 후 `DISPLAY=:99 python tests/test_undo.py`처럼 실행합니다.
 - 화면이 있는 환경에서는 `xvfb-run` 없이 그대로 실행해도 됩니다.
 - `test_merge_tab.py`는 병합 탭의 파일 추가, 표 표시, 드래그, 버튼 이동, 삭제, 병합 결과 순서를 검사합니다.
