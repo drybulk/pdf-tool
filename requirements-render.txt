@@ -1,0 +1,3 @@
+# 렌더링판(pdf_tool_render.py)에 필요한 라이브러리입니다. 경량판만 쓴다면 설치하지 않아도 됩니다.
+-r requirements.txt
+pypdfium2>=5.14,<6
