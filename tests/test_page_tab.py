@@ -190,6 +190,21 @@ msgs.clear(); page.range_var.set("900-950"); page.load_pdfs(); pump()
 assert msgs and msgs[0][0] == "warn"
 print("11. 잘못된 범위 경고 OK:", msgs[0][1][1])
 
+# ---------- 12. 같은 경로 저장 방지, 파일 이름 북마크 옵션 ----------
+filedialog.asksaveasfilename = lambda **k: SMALL  # 불러온 원본과 같은 경로
+msgs.clear(); page.save(); pump()
+assert msgs and msgs[0][0] == "error" and not page.busy, msgs
+assert len(PdfReader(SMALL).pages) == 5  # 원본은 그대로
+filedialog.asksaveasfilename = lambda **k: os.path.join(TMP, "result2.pdf")
+page.file_bookmark_var.set(True)
+msgs.clear(); page.save()
+t0 = time.time()
+while not msgs and time.time()-t0 < 10: pump(0.05)
+assert msgs and msgs[0][0] == "info", msgs
+r = PdfReader(os.path.join(TMP, "result2.pdf"))
+assert [(o.title, r.get_destination_page_number(o)) for o in r.outline] == [("small", 0), ("big", 1), ("small", 4)]
+print("12. 같은 경로 저장 방지와 파일 이름 북마크 OK")
+
 
 print("ALL PASSED")
 root.destroy()

@@ -24,6 +24,7 @@ from pdf_common import (
     PageTab,
     merge_pdfs,
     open_pdf,
+    outline_entries,
     parse_page_ranges,
     run_background,
     save_pages,
@@ -31,7 +32,7 @@ from pdf_common import (
 
 __all__ = [
     "IS_MAC", "UNDO_LIMIT", "DragTree", "MergeTab", "PageTab",
-    "merge_pdfs", "open_pdf", "parse_page_ranges", "run_background", "save_pages", "main",
+    "merge_pdfs", "open_pdf", "outline_entries", "parse_page_ranges", "run_background", "save_pages", "main",
 ]
 
 

@@ -1,7 +1,7 @@
 """
 PDF 도구 공통 모듈: 경량판(pdf_tool.py)과 렌더링판이 함께 사용하는 코드입니다.
 
-- PDF 처리 로직: open_pdf, parse_page_ranges, merge_pdfs, save_pages
+- PDF 처리 로직: open_pdf, parse_page_ranges, merge_pdfs, save_pages, outline_entries
 - 백그라운드 실행: run_background
 - 마우스 드래그로 행 순서를 바꿀 수 있는 목록 위젯: DragTree
 - 탭 화면: MergeTab (PDF 병합), PageTab (페이지 추출 / 편집)
@@ -95,10 +95,39 @@ def merge_pdfs(paths, output_path, add_bookmarks=True, progress=None):
     return len(writer.pages)
 
 
-def save_pages(pages, output_path, progress=None, readers=None):
+def outline_entries(reader):
+    """
+    원본 PDF의 북마크(목차)를 [(제목, 0부터 시작하는 쪽 인덱스 또는 None, 깊이), ...]로 펼칩니다.
+    순서는 목차에 보이는 순서(깊이 우선)입니다. 목차를 읽을 수 없으면 빈 목록을 반환합니다.
+    """
+    entries = []
+
+    def walk(items, depth):
+        for item in items:
+            if isinstance(item, list):  # 바로 앞 항목의 하위 항목들
+                walk(item, depth + 1)
+                continue
+            try:
+                index = reader.get_destination_page_number(item)
+            except Exception:
+                index = None
+            entries.append((item.title, index, depth))
+
+    try:
+        walk(reader.outline, 0)
+    except Exception:
+        return []
+    return entries
+
+
+def save_pages(pages, output_path, progress=None, readers=None, file_bookmarks=False, keep_outlines=False):
     """
     pages: [(PDF 경로, 0부터 시작하는 쪽 인덱스), ...] 순서대로 새 PDF를 만듭니다.
     readers: {경로: PdfReader} 캐시 (없으면 새로 읽음). 저장한 총 쪽수를 반환합니다.
+    file_bookmarks: 같은 파일의 쪽이 이어지는 구간마다 그 첫 쪽에 파일 이름 북마크를 추가합니다.
+    keep_outlines: 원본 PDF의 북마크 중 가리키는 쪽이 결과에 들어 있는 것을 유지합니다.
+        같은 쪽이 여러 번 들어 있으면 처음 나오는 위치를 가리킵니다. 상위 항목이 빠지면
+        남아 있는 가장 가까운 상위 항목(없으면 그 쪽이 속한 구간의 파일 이름 북마크) 아래에 둡니다.
     """
     readers = readers if readers is not None else {}
     writer = PdfWriter()
@@ -109,6 +138,31 @@ def save_pages(pages, output_path, progress=None, readers=None):
         writer.add_page(readers[path].pages[idx])
         if progress and (n % 10 == 0 or n == total):
             progress(n, total)
+
+    # 쪽 위치 -> 그 위치가 속한 구간의 파일 이름 북마크 (만들지 않으면 None)
+    run_item = [None] * total
+    item = None
+    for pos, (path, _) in enumerate(pages):
+        if pos == 0 or path != pages[pos - 1][0]:
+            title = os.path.splitext(os.path.basename(path))[0]
+            item = writer.add_outline_item(title, pos) if file_bookmarks else None
+        run_item[pos] = item
+
+    if keep_outlines:
+        first_pos = {}  # (경로, 쪽 인덱스) -> 결과에서 처음 나오는 위치
+        for pos, key in enumerate(pages):
+            first_pos.setdefault(key, pos)
+        for path in dict.fromkeys(p for p, _ in pages):  # 파일이 처음 나오는 순서
+            stack = []  # [(깊이, 추가한 북마크), ...] 현재 항목의 상위 항목들
+            for title, index, depth in outline_entries(readers[path]):
+                while stack and stack[-1][0] >= depth:
+                    stack.pop()
+                pos = first_pos.get((path, index))
+                if pos is None:
+                    continue
+                parent = stack[-1][1] if stack else run_item[pos]
+                stack.append((depth, writer.add_outline_item(title, pos, parent=parent)))
+
     with open(output_path, "wb") as f:
         writer.write(f)
     return total
@@ -645,6 +699,18 @@ class PageTab(ttk.Frame):
             foreground="#555555",
         ).pack(anchor="w", padx=10)
 
+        # 저장 옵션
+        opts = ttk.Frame(self)
+        opts.pack(fill="x", padx=10, pady=(5, 0))
+        self.keep_outline_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            opts, text="원본 북마크(목차) 유지", variable=self.keep_outline_var
+        ).pack(side="left")
+        self.file_bookmark_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            opts, text="파일 이름으로 북마크 추가", variable=self.file_bookmark_var
+        ).pack(side="left", padx=(15, 0))
+
         # 하단
         bottom = ttk.Frame(self)
         bottom.pack(fill="x", **pad)
@@ -825,6 +891,12 @@ class PageTab(ttk.Frame):
             return
 
         pages = [self.pages[iid] for iid in children]  # 현재 화면 순서 그대로
+        same = lambda p: os.path.normcase(os.path.abspath(p))
+        if same(output) in {same(path) for path, _ in pages}:
+            messagebox.showerror("오류", "저장 경로가 불러온 원본 파일과 같습니다. 다른 이름으로 저장해 주세요.")
+            return
+        file_bookmarks = self.file_bookmark_var.get()
+        keep_outlines = self.keep_outline_var.get()
         self.busy = True
         self.save_btn.state(["disabled"])
         self.progress["value"] = 0
@@ -844,7 +916,7 @@ class PageTab(ttk.Frame):
 
         run_background(
             self,
-            lambda report: save_pages(pages, output, report, self.readers),
+            lambda report: save_pages(pages, output, report, self.readers, file_bookmarks, keep_outlines),
             on_progress=lambda v: self.progress.configure(value=v),
             on_done=on_done,
             on_error=on_error,
