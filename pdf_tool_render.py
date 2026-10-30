@@ -312,6 +312,17 @@ class RenderPageTab(PageTab):
                 jobs.put_nowait(None)  # 기다리고 있는 변환 스레드를 깨워서 끝냄
             except queue.Full:
                 pass  # 큐가 차 있으면 변환 스레드가 다음 항목을 꺼낼 때 stop을 보고 끝냄
+            # 변환 스레드가 쓰고 있던 파일까지 끝난 뒤에 결과를 알리고 다시 저장할 수 있게 함
+            wait_worker(error)
+
+        def wait_worker(error):
+            if thread.is_alive():
+                self.after(20, wait_worker, error)
+                return
+            while not results.empty():
+                kind, msg = results.get_nowait()
+                if kind == "saved":
+                    state["saved"] += 1
             self.busy = False
             self.save_btn.state(["!disabled"])
             self.image_btn.state(["!disabled"])
@@ -354,7 +365,8 @@ class RenderPageTab(PageTab):
         self.save_btn.state(["disabled"])
         self.image_btn.state(["disabled"])
         self.progress["value"] = 0
-        threading.Thread(target=worker, daemon=True).start()
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
         self.after(1, step)
 
     def _on_destroy(self, event):

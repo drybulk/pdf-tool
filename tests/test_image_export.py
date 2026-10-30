@@ -249,6 +249,22 @@ page.docs.render_rgb = real_render
 time.sleep(0.3)
 assert "색상_p0002.png" not in os.listdir(OUT4)
 
+# 앞 쪽을 변환하는 도중에 다음 쪽 렌더링이 실패하면, 변환 중인 파일이 다 쓰인 뒤에 결과를 알림
+OUT4b = os.path.join(TMP, "out4b"); os.makedirs(OUT4b)
+filedialog.askdirectory = lambda **k: OUT4b
+real_png = R.encode_png
+def slow_png(*a, **k):
+    time.sleep(0.5)
+    return real_png(*a, **k)
+R.encode_png = slow_png
+page.docs.render_rgb = flaky
+msgs.clear(); page.save_images()
+kind, args = wait_done()
+assert kind == "error" and "저장한 이미지: 1개" in args[1], args
+assert os.listdir(OUT4b) == ["색상_p0001.png"] and not page.busy              # 알림 시점에 이미 파일이 있음
+R.encode_png = real_png
+page.docs.render_rgb = real_render
+
 filedialog.askdirectory = lambda **k: os.path.join(TMP, "없는폴더")   # 파일을 쓸 수 없는 경우
 msgs.clear(); page.save_images()
 kind, args = wait_done()
