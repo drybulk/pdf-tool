@@ -1,3 +1,5 @@
 # 렌더링판(pdf_tool_render.py)에 필요한 라이브러리입니다. 경량판만 쓴다면 설치하지 않아도 됩니다.
 -r requirements.txt
 pypdfium2>=5.14,<6
+# JPG 저장에 사용합니다. 없어도 실행되지만 PNG로만 저장할 수 있습니다.
+pillow>=12,<14

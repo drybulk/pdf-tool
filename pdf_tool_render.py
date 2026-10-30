@@ -1,23 +1,29 @@
 """
 PDF 도구 렌더링판: 경량판의 기능에 쪽 썸네일과 큰 미리보기를 더한 GUI입니다.
 
-필요한 외부 라이브러리: pypdf, pypdfium2
+필요한 외부 라이브러리: pypdf, pypdfium2, Pillow (Pillow는 JPG 저장에만 사용)
     pip install -r requirements-render.txt
 실행에는 같은 폴더의 pdf_common.py와 pdf_render.py가 필요합니다.
 
 탭 1. PDF 병합         : 경량판과 같습니다.
 탭 2. 페이지 추출/편집 : 경량판의 기능에 더해, 쪽 목록의 각 행에 썸네일을 표시하고
                          마지막으로 클릭한 쪽을 오른쪽에 크게 보여 줍니다.
+                         쪽을 PNG, JPG 이미지 파일로 저장할 수 있습니다.
 """
 
 import math
 import os
+import queue
+import threading
 import time
 import tkinter as tk
-from tkinter import ttk
+from tkinter import filedialog, messagebox, ttk
 
 from pdf_common import MergeTab, PageTab
-from pdf_render import THUMB_BOX, LRUCache, PdfiumDocs, fit_scale, thumb_scale
+from pdf_render import (
+    DPI_CHOICES, HAS_PILLOW, THUMB_BOX, LRUCache, PdfiumDocs,
+    encode_jpg, encode_png, fit_scale, image_file_names, thumb_scale,
+)
 
 
 WINDOW_SIZE = (1200, 750)  # 기본 창 크기. 화면이 작으면 화면 안에 들어오도록 줄임
@@ -27,6 +33,9 @@ THUMB_BUDGET = 0.03        # 한 번에 썸네일을 그리는 최대 시간(초
 PREVIEW_DELAY_MS = 150     # 미리보기 영역 크기가 바뀐 뒤 다시 그리기까지 기다리는 시간
 PREVIEW_PAD = 8            # 미리보기 그림과 영역 가장자리 사이의 여백(픽셀)
 THUMB_BORDER = "#8a8a8a"   # 썸네일 테두리 색
+DEFAULT_DPI = 150          # 이미지 저장 대화 상자의 기본 해상도
+DEFAULT_JPG_QUALITY = 90   # 이미지 저장 대화 상자의 기본 JPG 품질 (1~95)
+EXPORT_QUEUE = 2           # 이미지 저장 중 파일 변환을 기다리는 쪽 그림의 최대 수 (300 DPI 그림 1장이 약 26MB)
 
 
 def fit_window_size(want_w, want_h, screen_w, screen_h, margin_w=40, margin_h=80):
@@ -56,6 +65,10 @@ class RenderPageTab(PageTab):
         self.thumb_renders = 0      # 썸네일을 실제로 그린 횟수 (테스트와 확인용)
         super().__init__(master)
         self._setup_thumbnails()
+        # "새 PDF로 저장" 버튼의 왼쪽에 둠
+        self.image_btn = ttk.Button(self.save_btn.master, text="이미지로 저장", command=self.save_images)
+        self.image_btn.pack(side="right", padx=(0, 5))
+        self._image_dialog = None
         self.bind("<Destroy>", self._on_destroy, add="+")
 
     # ---- 화면 배치 ----
@@ -223,9 +236,210 @@ class RenderPageTab(PageTab):
         self._preview_shown = None
         self.preview_caption.set("")
 
+    # ---- 이미지로 저장 ----
+    def save_images(self):
+        if self.busy:
+            return
+        children = self.tree.get_children()
+        if not children:
+            messagebox.showinfo("안내", "저장할 쪽이 없습니다. 먼저 PDF를 불러와 주세요.")
+            return
+        selection = set(self.tree.selection())
+        selected = [iid for iid in children if iid in selection]  # 화면 순서대로
+        options = self.ask_image_options(len(selected), len(children))
+        if not options:
+            return
+        folder = filedialog.askdirectory(title="이미지를 저장할 폴더 선택", mustexist=True)
+        if not folder:
+            return
+
+        rows = selected if options["scope"] == "selected" else children
+        pages = [self.pages[iid] for iid in rows]
+        ext = "jpg" if options["format"] == "JPG" else "png"
+        targets = [os.path.join(folder, name) for name in image_file_names(pages, ext)]
+        existing = [t for t in targets if os.path.exists(t)]
+        if existing and not messagebox.askyesno(
+            "덮어쓰기 확인",
+            f"같은 이름의 파일이 {len(existing)}개 있습니다.\n예: {os.path.basename(existing[0])}\n\n덮어쓸까요?",
+        ):
+            return
+        self.export_images(pages, targets, options["format"], options["dpi"], options["quality"])
+
+    def ask_image_options(self, n_selected, n_all):
+        """저장 옵션 대화 상자를 띄우고, 확인을 누르면 옵션 딕셔너리를, 취소하면 None을 반환합니다."""
+        dialog = ImageSaveDialog(self, n_selected, n_all)
+        self._image_dialog = dialog
+        self.wait_window(dialog)
+        self._image_dialog = None
+        return dialog.result
+
+    def export_images(self, pages, targets, fmt, dpi, quality=DEFAULT_JPG_QUALITY):
+        """
+        pages[i]를 dpi 해상도로 그려서 targets[i] 파일에 저장합니다.
+        렌더링은 PDFium의 스레드 제한 때문에 메인 스레드에서 한 쪽씩 나누어 하고,
+        시간이 오래 걸리는 PNG/JPG 변환과 파일 쓰기는 별도 스레드에서 합니다.
+        """
+        total = len(pages)
+        scale = dpi / 72
+        if fmt == "JPG":
+            encode = lambda w, h, rgb: encode_jpg(w, h, rgb, dpi=dpi, quality=quality)
+        else:
+            encode = lambda w, h, rgb: encode_png(w, h, rgb, dpi=dpi)
+        jobs = queue.Queue(maxsize=EXPORT_QUEUE)  # 그린 쪽 (파일 경로, 너비, 높이, RGB 바이트)
+        results = queue.Queue()                   # 변환 스레드의 결과 ("saved", None) 또는 ("error", 문구)
+        stop = threading.Event()
+
+        def worker():
+            while True:
+                item = jobs.get()
+                if item is None or stop.is_set():
+                    return
+                target, w, h, rgb = item
+                try:
+                    data = encode(w, h, rgb)
+                    with open(target, "wb") as f:
+                        f.write(data)
+                except Exception as e:
+                    results.put(("error", f"{os.path.basename(target)}: {e}"))
+                    return
+                results.put(("saved", None))
+
+        state = {"next": 0, "saved": 0}
+
+        def finish(error=None):
+            stop.set()
+            try:
+                jobs.put_nowait(None)  # 기다리고 있는 변환 스레드를 깨워서 끝냄
+            except queue.Full:
+                pass  # 큐가 차 있으면 변환 스레드가 다음 항목을 꺼낼 때 stop을 보고 끝냄
+            self.busy = False
+            self.save_btn.state(["!disabled"])
+            self.image_btn.state(["!disabled"])
+            folder = os.path.dirname(targets[0])
+            if error:
+                messagebox.showerror("이미지 저장 실패", f"{error}\n\n저장한 이미지: {state['saved']}개 / {total}개\n{folder}")
+            else:
+                self.progress["value"] = 100
+                messagebox.showinfo("완료", f"이미지 {total}개를 저장했습니다.\n\n{folder}")
+
+        def step():
+            try:
+                while True:
+                    kind, msg = results.get_nowait()
+                    if kind == "error":
+                        finish(msg)
+                        return
+                    state["saved"] += 1
+            except queue.Empty:
+                pass
+            self.progress["value"] = state["saved"] / total * 100
+            if state["saved"] == total:
+                finish()
+                return
+            i = state["next"]
+            if i < total and not jobs.full():
+                path, index = pages[i]
+                try:
+                    w, h, rgb = self.docs.render_rgb(path, index, scale)
+                except Exception as e:
+                    finish(f"{os.path.basename(path)}의 {index + 1}쪽을 그릴 수 없습니다.\n{e}")
+                    return
+                jobs.put_nowait((targets[i], w, h, rgb))
+                state["next"] = i + 1
+                self.after(1, step)  # 이벤트를 처리한 뒤 다음 쪽을 그림
+            else:
+                self.after(20, step)  # 변환을 기다림
+
+        self.busy = True
+        self.save_btn.state(["disabled"])
+        self.image_btn.state(["disabled"])
+        self.progress["value"] = 0
+        threading.Thread(target=worker, daemon=True).start()
+        self.after(1, step)
+
     def _on_destroy(self, event):
         if event.widget is self:
             self.docs.close_all()
+
+
+class ImageSaveDialog(tk.Toplevel):
+    """이미지 저장 옵션(저장할 쪽, 형식, 해상도, JPG 품질)을 고르는 대화 상자입니다. 결과는 self.result에 담깁니다."""
+
+    def __init__(self, master, n_selected, n_all):
+        super().__init__(master)
+        self.title("이미지로 저장")
+        self.resizable(False, False)
+        self.transient(master.winfo_toplevel())
+        self.result = None
+        pad = {"padx": 12, "pady": (10, 2)}
+
+        ttk.Label(self, text="저장할 쪽").pack(anchor="w", **pad)
+        self.scope_var = tk.StringVar(value="selected" if n_selected else "all")
+        sel = ttk.Radiobutton(self, text=f"선택한 쪽 ({n_selected}쪽)", variable=self.scope_var, value="selected")
+        sel.pack(anchor="w", padx=24)
+        if not n_selected:
+            sel.state(["disabled"])
+        ttk.Radiobutton(self, text=f"목록 전체 ({n_all}쪽)", variable=self.scope_var, value="all").pack(anchor="w", padx=24)
+
+        ttk.Label(self, text="형식").pack(anchor="w", **pad)
+        self.format_var = tk.StringVar(value="PNG")
+        fmt = ttk.Frame(self)
+        fmt.pack(anchor="w", padx=24)
+        ttk.Radiobutton(fmt, text="PNG", variable=self.format_var, value="PNG", command=self._update_quality).pack(side="left")
+        self.jpg_button = ttk.Radiobutton(fmt, text="JPG", variable=self.format_var, value="JPG", command=self._update_quality)
+        self.jpg_button.pack(side="left", padx=(10, 0))
+        if not HAS_PILLOW:
+            self.jpg_button.state(["disabled"])
+            ttk.Label(self, text="JPG로 저장하려면 Pillow를 설치해야 합니다.", foreground="#555555").pack(anchor="w", padx=24)
+
+        row = ttk.Frame(self)
+        row.pack(anchor="w", **pad)
+        ttk.Label(row, text="해상도(DPI)").pack(side="left")
+        self.dpi_var = tk.StringVar(value=str(DEFAULT_DPI))
+        ttk.Combobox(row, textvariable=self.dpi_var, values=[str(d) for d in DPI_CHOICES], state="readonly", width=6).pack(
+            side="left", padx=(8, 0)
+        )
+
+        row = ttk.Frame(self)
+        row.pack(anchor="w", **pad)
+        ttk.Label(row, text="JPG 품질(1~95)").pack(side="left")
+        self.quality_var = tk.StringVar(value=str(DEFAULT_JPG_QUALITY))
+        self.quality_box = ttk.Spinbox(row, from_=1, to=95, textvariable=self.quality_var, width=5)
+        self.quality_box.pack(side="left", padx=(8, 0))
+        self._update_quality()
+
+        btns = ttk.Frame(self)
+        btns.pack(fill="x", padx=12, pady=12)
+        ttk.Button(btns, text="취소", command=self.cancel).pack(side="right")
+        ttk.Button(btns, text="저장할 폴더 선택", command=self.ok).pack(side="right", padx=(0, 5))
+        self.bind("<Return>", lambda e: self.ok())
+        self.bind("<Escape>", lambda e: self.cancel())
+        self.protocol("WM_DELETE_WINDOW", self.cancel)
+        self.wait_visibility()  # 창이 화면에 나타나기 전에 grab_set을 부르면 실패할 수 있음
+        self.grab_set()
+
+    def _update_quality(self):
+        self.quality_box.state(["!disabled"] if self.format_var.get() == "JPG" else ["disabled"])
+
+    def ok(self):
+        try:
+            quality = int(self.quality_var.get())
+        except ValueError:
+            quality = 0
+        if self.format_var.get() == "JPG" and not 1 <= quality <= 95:
+            messagebox.showwarning("입력 오류", "JPG 품질은 1부터 95 사이의 숫자로 입력해 주세요.", parent=self)
+            return
+        self.result = {
+            "scope": self.scope_var.get(),
+            "format": self.format_var.get(),
+            "dpi": int(self.dpi_var.get()),
+            "quality": quality if self.format_var.get() == "JPG" else DEFAULT_JPG_QUALITY,
+        }
+        self.destroy()
+
+    def cancel(self):
+        self.result = None
+        self.destroy()
 
 
 # ---------------------------------------------------------------------------

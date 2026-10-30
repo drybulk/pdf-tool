@@ -36,6 +36,7 @@
 
 - **라이선스**: MIT-CMU입니다. 과거에는 같은 취지의 문구를 HPND라는 이름으로 표기했으며, 2024년 9월에 OSI(오픈소스 라이선스 인증 단체)가 MIT-CMU를 인증 라이선스로 승인했습니다. 저작권 표기와 라이선스 문구를 유지하면 사용, 복사, 수정, 배포가 가능합니다. 광고나 홍보에 원저작자의 이름을 사용하려면 사전 서면 허가가 필요하다는 조항이 있습니다.
 - **동봉된 네이티브 라이브러리**: Pillow 배포본(wheel)에는 이미지 형식을 처리하는 C 라이브러리가 함께 들어 있고, 각각 별도의 라이선스를 가집니다. Linux용 12.1.1 배포본에서는 libjpeg, FreeType, HarfBuzz, libtiff, libwebp 등이 확인되었습니다. 혼자 사용하는 경우에는 신경 쓸 필요가 없지만, exe로 묶어서 배포한다면 함께 들어가는 라이브러리의 라이선스를 확인해야 합니다. Windows용 배포본의 구성은 이 노트를 작성할 때 확인하지 않았습니다.
+- **Windows 배포본 확인 결과 (2026-10-30, Pillow 13.0.0 cp312 win_amd64)**: 라이브러리는 별도 DLL 없이 `.pyd` 파일 안에 정적으로 들어 있습니다. 포함된 것은 libjpeg-turbo 3.2.0(IJG, BSD-3-Clause), FreeType 2.14.3(FTL 또는 GPLv2 중 선택), zlib-ng(zlib), libpng, libtiff, libwebp, OpenJPEG, libavif, Little CMS 2, HarfBuzz, raqm, brotli, liblzma(0BSD)이며 모두 허용형입니다. 구성 요소 목록(sbom)에 있는 libimagequant(GPL-3.0)는 링크되어 있지 않았고, FriBiDi(LGPL)는 시스템에 `fribidi-0.dll`이 있을 때만 실행 중에 불러오는 방식이라 wheel에 없습니다. 실행 파일 배포 시 wheel의 `dist-info/licenses/LICENSE`(모든 구성 요소의 고지문 포함)를 함께 넣고, 문서에 IJG 문장("this software is based in part on the work of the Independent JPEG Group")과 FreeType 인용을 적어야 합니다.
 
 ## 4. 기능별 필요 라이브러리
 
@@ -150,7 +151,7 @@ tkinter에 포함된 `Menu` 위젯을 사용하므로 추가 라이브러리가 
 ## 9. 결정이 필요한 사항
 
 1. **구조**: 공통 모듈 방식으로 결정되었습니다. 1단계에서 `pdf_common.py`로 분리했습니다.
-2. **Pillow 포함 여부**: 아직 결정하지 않았으며, 3단계를 시작할 때 정합니다. JPG 저장을 지원하려면 Pillow가 필요하고, PNG만 지원한다면 pypdf와 pypdfium2만으로 구성할 수 있습니다. 논문과 보고서를 이미지로 옮길 때는 용량이 작은 JPG가 편리한 경우가 많아서 포함을 권장합니다.
+2. **Pillow 포함 여부**: 2026-10-30에 포함하기로 결정했습니다(라이선스 확인 후). 결정 전의 설명: JPG 저장을 지원하려면 Pillow가 필요하고, PNG만 지원한다면 pypdf와 pypdfium2만으로 구성할 수 있습니다. 논문과 보고서를 이미지로 옮길 때는 용량이 작은 JPG가 편리한 경우가 많아서 포함을 권장합니다.
 3. **배포 계획**: 결정되었습니다. 저장소를 공개로 전환하고 GitHub Releases에 실행 파일을 올리며, 웹 버전도 만들 예정입니다. 라이선스와 저작권 고지 정리는 별도 단계에서 진행합니다.
 4. **렌더링 라이브러리**: pypdfium2로 확정되었습니다. 렌더링판의 의존성은 `requirements-render.txt`에 따로 둡니다.
 

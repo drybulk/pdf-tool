@@ -6,7 +6,7 @@ PDF 병합, 쪽 범위 추출, 쪽 단위 순서 편집(마우스 드래그)을 
 | 판 | 실행 파일 | 외부 라이브러리 | 차이 |
 |---|---|---|---|
 | 경량판 | `pdf_tool.py` | `pypdf` | 기본 기능 |
-| 렌더링판 | `pdf_tool_render.py` | `pypdf`, `pypdfium2` | 쪽 목록에 썸네일을 표시하고, 클릭한 쪽을 오른쪽에 크게 보여 줍니다 |
+| 렌더링판 | `pdf_tool_render.py` | `pypdf`, `pypdfium2`, `Pillow` | 쪽 목록에 썸네일을 표시하고, 클릭한 쪽을 오른쪽에 크게 보여 줍니다. 쪽을 PNG, JPG 이미지로 저장할 수 있습니다 |
 
 GUI는 파이썬에 기본으로 포함된 `tkinter`를 사용합니다.
 
@@ -49,6 +49,10 @@ python pdf_tool_render.py
 - 쪽 목록의 각 행에 썸네일을 표시합니다. 화면에 보이는 쪽만 그리고, 최근 300장을 보관합니다.
 - 마지막으로 클릭한 쪽(키보드 위/아래 화살표로 옮긴 쪽 포함)을 오른쪽 미리보기 영역에 맞게 크게 보여 줍니다.
 - 목록과 미리보기 사이의 경계를 마우스로 끌어서 두 영역의 폭을 조절할 수 있습니다.
+- "이미지로 저장" 버튼으로 쪽을 PNG 또는 JPG 파일로 저장합니다. 선택한 쪽 또는 목록 전체를 고르고, 해상도(72, 150, 200, 300 DPI)와 JPG 품질(1~95)을 정한 뒤 저장할 폴더를 선택합니다.
+  - 파일 이름은 `원본이름_p0721.png`처럼 원본 쪽 번호를 씁니다. 같은 쪽이 목록에 두 번 있으면 `원본이름_p0721_2.png`처럼 번호를 붙입니다.
+  - 같은 이름의 파일이 폴더에 이미 있으면 덮어쓸지 한 번 묻습니다.
+  - JPG 저장에는 Pillow가 필요합니다. Pillow가 없으면 PNG만 고를 수 있습니다.
 
 ## 단축키 (탭 2)
 
@@ -71,6 +75,7 @@ python tests/test_merge.py
 
 # 렌더링판 (pip install -r requirements-render.txt 필요)
 xvfb-run -a python tests/test_render.py
+xvfb-run -a python tests/test_image_export.py
 ```
 
 Linux에서는 `python3-tk`와 `xvfb`가 필요합니다.
