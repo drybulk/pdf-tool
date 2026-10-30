@@ -230,6 +230,17 @@ page.ask_image_options = lambda n_sel, n_all: {"scope": "all", "format": "PNG", 
 msgs.clear(); page.save_images(); wait_done()
 assert sorted(os.listdir(OUT3)) == ["색상_p0001.png", "색상_p0001_2.png", "색상_p0002.png", "색상_p0003.png"]
 assert center(os.path.join(OUT3, "색상_p0001_2.png"))[1] == (255, 0, 0)
+# 대화 상자가 열린 동안 실행 취소로 행이 바뀌어도, 대화 상자를 열 때의 쪽 목록으로 저장함
+OUT3b = os.path.join(TMP, "out3b"); os.makedirs(OUT3b)
+filedialog.askdirectory = lambda **k: OUT3b
+def undo_then_ok(n_sel, n_all):
+    page.undo(); root.update()                                     # "1쪽 한 번 더 불러오기"를 취소해서 행 ID가 바뀜
+    return {"scope": "all", "format": "PNG", "dpi": 72, "quality": 90}
+page.ask_image_options = undo_then_ok
+msgs.clear(); page.save_images(); kind, args = wait_done()
+assert kind == "info" and len(tree.get_children()) == 3, (kind, args)
+assert len(os.listdir(OUT3b)) == 4
+page.ask_image_options = lambda n_sel, n_all: {"scope": "all", "format": "PNG", "dpi": 72, "quality": 90}
 print("9. 같은 쪽 두 번 저장 OK")
 
 # ---------- 10. 오류 처리: 그리지 못한 쪽, 쓸 수 없는 폴더 ----------

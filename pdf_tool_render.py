@@ -245,16 +245,17 @@ class RenderPageTab(PageTab):
             messagebox.showinfo("안내", "저장할 쪽이 없습니다. 먼저 PDF를 불러와 주세요.")
             return
         selection = set(self.tree.selection())
-        selected = [iid for iid in children if iid in selection]  # 화면 순서대로
-        options = self.ask_image_options(len(selected), len(children))
+        # 대화 상자가 열린 동안에도 단축키(실행 취소 등)로 행 ID가 바뀔 수 있으므로 쪽 목록을 먼저 복사해 둠
+        all_pages = [self.pages[iid] for iid in children]
+        selected = [self.pages[iid] for iid in children if iid in selection]  # 화면 순서대로
+        options = self.ask_image_options(len(selected), len(all_pages))
         if not options:
             return
         folder = filedialog.askdirectory(title="이미지를 저장할 폴더 선택", mustexist=True)
         if not folder:
             return
 
-        rows = selected if options["scope"] == "selected" else children
-        pages = [self.pages[iid] for iid in rows]
+        pages = selected if options["scope"] == "selected" else all_pages
         ext = "jpg" if options["format"] == "JPG" else "png"
         targets = [os.path.join(folder, name) for name in image_file_names(pages, ext)]
         existing = [t for t in targets if os.path.exists(t)]
