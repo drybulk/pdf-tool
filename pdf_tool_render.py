@@ -380,6 +380,7 @@ class ImageSaveDialog(tk.Toplevel):
 
     def __init__(self, master, n_selected, n_all):
         super().__init__(master)
+        self.withdraw()  # 위치를 정하기 전에 화면 왼쪽 위에 잠깐 나타나지 않도록 숨겨 둠
         self.title("이미지로 저장")
         self.resizable(False, False)
         self.transient(master.winfo_toplevel())
@@ -428,8 +429,17 @@ class ImageSaveDialog(tk.Toplevel):
         self.bind("<Return>", lambda e: self.ok())
         self.bind("<Escape>", lambda e: self.cancel())
         self.protocol("WM_DELETE_WINDOW", self.cancel)
+        self._center_on(master.winfo_toplevel())
+        self.deiconify()
         self.wait_visibility()  # 창이 화면에 나타나기 전에 grab_set을 부르면 실패할 수 있음
         self.grab_set()
+
+    def _center_on(self, top):
+        """본 창의 가운데에 대화 상자를 둡니다. 화면 밖으로 나가지 않게 좌표를 0 이상으로 맞춥니다."""
+        self.update_idletasks()
+        x = top.winfo_rootx() + (top.winfo_width() - self.winfo_reqwidth()) // 2
+        y = top.winfo_rooty() + (top.winfo_height() - self.winfo_reqheight()) // 2
+        self.geometry(f"+{max(x, 0)}+{max(y, 0)}")
 
     def _update_quality(self):
         self.quality_box.state(["!disabled"] if self.format_var.get() == "JPG" else ["disabled"])

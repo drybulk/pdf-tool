@@ -129,6 +129,8 @@ def run_dialog(action, n_selected, n_all):
     def drive():
         d = page._image_dialog
         out["dialog"] = d
+        d.update_idletasks()
+        out["pos"] = (d.winfo_rootx() + d.winfo_width() // 2, d.winfo_rooty() + d.winfo_height() // 2)
         out["state"] = {
             "scope": d.scope_var.get(), "format": d.format_var.get(), "dpi": d.dpi_var.get(),
             "quality": d.quality_var.get(), "quality_disabled": d.quality_box.instate(["disabled"]),
@@ -147,6 +149,12 @@ def run_dialog(action, n_selected, n_all):
 out = run_dialog(lambda d: d.ok(), 0, 3)
 assert out["state"] == {"scope": "all", "format": "PNG", "dpi": "150", "quality": "90", "quality_disabled": True}, out["state"]
 assert out["result"] == {"scope": "all", "format": "PNG", "dpi": 150, "quality": 90}, out["result"]
+
+# 대화 상자는 본 창의 가운데에 뜸
+dx, dy = out["pos"]
+cx = root.winfo_rootx() + root.winfo_width() // 2
+cy = root.winfo_rooty() + root.winfo_height() // 2
+assert abs(dx - cx) < 5 and abs(dy - cy) < 5, (out["pos"], (cx, cy))
 
 out = run_dialog(lambda d: d.ok(), 2, 3)
 assert out["state"]["scope"] == "selected"                         # 선택한 쪽이 있으면 기본값은 "선택한 쪽"
