@@ -125,4 +125,15 @@ print("7. 일부 쪽, 순서 변경 시 북마크 OK")
 T.save_pages([(a2, 2), (a2, 0), (a2, 2)], out, keep_outlines=True)
 assert outline_of(out) == [(0, "1장", 2), (0, "2장", 1)], outline_of(out)
 print("8. 중복 쪽 북마크 OK")
+
+# 9. 상위 항목과 하위 항목이 같은 파일의 서로 다른 구간에 있으면, 파일 이름 북마크를 만들 때는 하위 항목이 자기 구간 아래에 들어간다
+pages = [(a2, 0), (b2, 1), (a2, 1)]
+T.save_pages(pages, out, file_bookmarks=True, keep_outlines=True)
+assert outline_of(out) == [
+    (0, "a2", 1), (1, "1장", 1), (0, "b2", 2), (1, "B장", 2), (0, "a2", 3), (1, "1.1절", 3)
+], outline_of(out)
+# 파일 이름 북마크가 없으면 구간을 나눌 기준이 없으므로 원본의 상하 관계를 유지한다
+T.save_pages(pages, out, keep_outlines=True)
+assert outline_of(out) == [(0, "1장", 1), (1, "1.1절", 3), (0, "B장", 2)], outline_of(out)
+print("9. 구간이 나뉜 상하 관계 OK")
 print("ALL MERGE TESTS PASSED")

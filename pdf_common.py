@@ -128,6 +128,7 @@ def save_pages(pages, output_path, progress=None, readers=None, file_bookmarks=F
     keep_outlines: 원본 PDF의 북마크 중 가리키는 쪽이 결과에 들어 있는 것을 유지합니다.
         같은 쪽이 여러 번 들어 있으면 처음 나오는 위치를 가리킵니다. 상위 항목이 빠지면
         남아 있는 가장 가까운 상위 항목(없으면 그 쪽이 속한 구간의 파일 이름 북마크) 아래에 둡니다.
+        파일 이름 북마크를 만들 때는 같은 구간에 있는 상위 항목만 사용합니다.
     """
     readers = readers if readers is not None else {}
     writer = PdfWriter()
@@ -139,29 +140,36 @@ def save_pages(pages, output_path, progress=None, readers=None, file_bookmarks=F
         if progress and (n % 10 == 0 or n == total):
             progress(n, total)
 
-    # 쪽 위치 -> 그 위치가 속한 구간의 파일 이름 북마크 (만들지 않으면 None)
+    # 쪽 위치 -> 그 위치가 속한 구간의 번호와 파일 이름 북마크 (만들지 않으면 None)
+    run_of = [0] * total
     run_item = [None] * total
-    item = None
+    run, item = -1, None
     for pos, (path, _) in enumerate(pages):
         if pos == 0 or path != pages[pos - 1][0]:
+            run += 1
             title = os.path.splitext(os.path.basename(path))[0]
             item = writer.add_outline_item(title, pos) if file_bookmarks else None
-        run_item[pos] = item
+        run_of[pos], run_item[pos] = run, item
 
     if keep_outlines:
         first_pos = {}  # (경로, 쪽 인덱스) -> 결과에서 처음 나오는 위치
         for pos, key in enumerate(pages):
             first_pos.setdefault(key, pos)
         for path in dict.fromkeys(p for p, _ in pages):  # 파일이 처음 나오는 순서
-            stack = []  # [(깊이, 추가한 북마크), ...] 현재 항목의 상위 항목들
+            stack = []  # [(깊이, 추가한 북마크, 구간 번호), ...] 현재 항목의 상위 항목들
             for title, index, depth in outline_entries(readers[path]):
                 while stack and stack[-1][0] >= depth:
                     stack.pop()
                 pos = first_pos.get((path, index))
                 if pos is None:
                     continue
-                parent = stack[-1][1] if stack else run_item[pos]
-                stack.append((depth, writer.add_outline_item(title, pos, parent=parent)))
+                parent = run_item[pos]
+                for _, ancestor, ancestor_run in reversed(stack):
+                    if not file_bookmarks or ancestor_run == run_of[pos]:
+                        parent = ancestor
+                        break
+                item = writer.add_outline_item(title, pos, parent=parent)
+                stack.append((depth, item, run_of[pos]))
 
     with open(output_path, "wb") as f:
         writer.write(f)
