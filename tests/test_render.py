@@ -133,6 +133,7 @@ assert len(buttons) == 1
 assert list_right <= preview_left and preview_right <= buttons[0].winfo_rootx(), (list_right, preview_left, preview_right)
 assert str(tree).startswith(str(page.paned))                                   # 목록은 나눔 창 안에 있음
 assert "tree" in str(tree.cget("show"))                                        # 썸네일 열(#0) 표시
+assert page.save_btn.winfo_ismapped() and page.progress.winfo_ismapped()      # 아래쪽 저장 버튼과 진행 막대가 보임
 print("5. 화면 배치 OK")
 
 # ---------- 6. 지연 로딩: 보이는 행(위아래 여유 포함)만 그림 ----------
@@ -171,8 +172,8 @@ page.clear_all(); load("1-10")
 pump(0.3)
 click(2); pump(0.3)
 assert preview_key() == (BIG, 2) and page.preview_caption.get().endswith("3쪽"), (preview_key(), page.preview_caption.get())
-click(5, state=0x4); pump(0.3)                                                # Ctrl+클릭으로 추가 선택
-assert preview_key() == (BIG, 5) and len(tree.selection()) == 2
+click(4, state=0x4); pump(0.3)                                                # Ctrl+클릭으로 추가 선택
+assert preview_key() == (BIG, 4) and len(tree.selection()) == 2
 click(2); pump(0.3)                                                            # 이미 선택된 행 클릭: 선택은 그대로, 미리보기만 바뀜
 assert preview_key() == (BIG, 2)
 # 미리보기 그림이 영역 안에 들어가고 쪽 비율을 유지함

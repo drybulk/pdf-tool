@@ -76,7 +76,9 @@ class RenderPageTab(PageTab):
 
     def _setup_thumbnails(self):
         tree = self.tree
-        tree.configure(show="tree headings")
+        # 행이 높아서 기본 높이(10행)로는 목록이 요구하는 높이가 창보다 커지고, 그러면 아래쪽의 저장 버튼과
+        # 진행 막대가 밀려나 보이지 않음. 요구 높이를 작게 두고 남는 공간만큼 늘어나게 함
+        tree.configure(show="tree headings", height=3)
         tree.heading("#0", text="썸네일")
         tree.column("#0", width=THUMB_BOX[0] + 16, minwidth=THUMB_BOX[0] + 16, stretch=False, anchor="center")
         tree.column("file", width=200)
