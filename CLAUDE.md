@@ -116,6 +116,7 @@ xvfb-run -a python tests/test_image_export.py
 - `test_image_export.py`는 RGB/PNG/JPG 변환, 파일 이름 규칙, 버튼 배치, 저장 대화 상자(기본값, 품질 검사, 취소, Pillow가 없을 때), 선택한 쪽/전체 저장, 덮어쓰기 확인, 같은 쪽 두 번, 오류 처리, 저장 중 화면 반응을 검사합니다. Pillow가 필요합니다.
 - 대화 상자 위치 테스트는 Windows의 제목 표시줄과 테두리 때문에 대화 상자 가운데가 본 창 가운데보다 오른쪽 아래로 밀리므로(배율 100%에서 9, 37픽셀) 80픽셀까지 허용합니다.
 - 대화 상자 테스트는 `root.after`로 `page._image_dialog`를 조작한 뒤 `ok()`/`cancel()`을 부릅니다. 검사가 실패해도 대화 상자를 닫아야 `wait_window`에서 멈추지 않습니다. 대화 상자에 키 이벤트를 보내려면 먼저 `focus_force()`가 필요합니다.
+- `test_render.py`의 테스트는 Windows(행이 더 높음)와 다른 창 크기에서도 통과해야 합니다. 행을 클릭하는 `rowy`는 행 전체가 보일 때까지 스크롤한 뒤 좌표를 구합니다. 일부만 보이는 행은 `see()`가 스크롤하지 않아서 행 가운데 좌표가 목록 밖이 될 수 있기 때문입니다. 미리보기 그림은 높이에 맞춰질 수도 있으므로 크기 변화 검사는 영역을 그림보다 좁게 만들어서 합니다. 창 크기를 바꿔 가며(예: 1100×600~1400×750) 확인하면 Windows 실패를 미리 잡을 수 있습니다.
 - PDFium이 그린 그림의 크기는 `쪽 크기 × 배율`을 반올림한 값과 1픽셀 다를 수 있습니다(A4 150 DPI 높이 1754.2 → 1755).
 - `test_common.py`는 `pdf_tool.py` 없이 `pdf_common.py`만 가져와서 처리 로직, `run_background`, `DragTree`를 검사하고, 마지막에 `pdf_tool.py`가 공통 모듈의 객체(`PageTab` 포함)를 그대로 사용하는지 확인합니다.
 - `xvfb-run`이 없으면 `Xvfb :99 &` 실행 후 `DISPLAY=:99 python tests/test_undo.py`처럼 실행합니다.
