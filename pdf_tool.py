@@ -8,7 +8,8 @@ GUI는 파이썬에 기본 포함된 tkinter를 사용합니다.
 
 쪽 범위를 지정해 PDF를 불러오고, 쪽 단위로 마우스로 순서를 바꾸거나 삭제한 뒤 새 PDF로 저장합니다.
 여러 PDF를 불러오면 목록 순서대로 이어 붙여 하나로 합칩니다(원본 북마크 유지, 파일 이름 북마크 선택).
-Ctrl+Z: 실행 취소, Ctrl+Y (또는 Ctrl+Shift+Z): 다시 실행
+메뉴 막대(파일, 편집, 도움말)와 쪽 목록의 우클릭 메뉴가 있습니다.
+Ctrl+O: 불러오기, Ctrl+S: 저장, Ctrl+Z: 실행 취소, Ctrl+Y (또는 Ctrl+Shift+Z): 다시 실행
 """
 
 import tkinter as tk
@@ -30,19 +31,26 @@ from pdf_common import (
 
 __all__ = [
     "IS_MAC", "UNDO_LIMIT", "DragTree", "PageTab",
-    "merge_pdfs", "open_pdf", "outline_entries", "parse_page_ranges", "run_background", "save_pages", "main",
+    "merge_pdfs", "open_pdf", "outline_entries", "parse_page_ranges", "run_background", "save_pages", "build_window", "main",
 ]
 
 
 # ---------------------------------------------------------------------------
-def main():
-    root = tk.Tk()
+def build_window(root):
+    """창(root)에 제목, 크기, 메뉴 막대, 쪽 편집 화면을 붙이고 화면(PageTab)을 반환합니다."""
     root.title("PDF 도구: 병합 / 페이지 추출")
     root.geometry("780x560")
     root.minsize(640, 460)
 
-    PageTab(root).pack(fill="both", expand=True)
+    page = PageTab(root)
+    page.make_menubar(root)
+    page.pack(fill="both", expand=True)
+    return page
 
+
+def main():
+    root = tk.Tk()
+    build_window(root)
     root.mainloop()
 
 

@@ -4,12 +4,14 @@ PDF 도구 공통 모듈: 경량판(pdf_tool.py)과 렌더링판이 함께 사�
 - PDF 처리 로직: open_pdf, parse_page_ranges, merge_pdfs, save_pages, outline_entries
 - 백그라운드 실행: run_background
 - 마우스 드래그로 행 순서를 바꿀 수 있는 목록 위젯: DragTree
-- 화면: PageTab (페이지 추출 / 편집 / 병합)
+- 화면: PageTab (페이지 추출 / 편집 / 병합, 메뉴 막대와 우클릭 메뉴)
 
 필요한 외부 라이브러리: pypdf
 """
 
+import importlib.metadata
 import os
+import platform
 import queue
 import re
 import sys
@@ -23,6 +25,7 @@ from pypdf.generic import ArrayObject, ByteStringObject, Fit, NameObject, TextSt
 
 IS_MAC = sys.platform == "darwin"
 UNDO_LIMIT = 100  # 실행 취소로 되돌릴 수 있는 최대 단계 수
+MOD = "Cmd" if IS_MAC else "Ctrl"  # 메뉴에 표시하는 단축키 수정자 키 이름
 
 
 # ---------------------------------------------------------------------------
@@ -425,6 +428,18 @@ class DragTree(ttk.Treeview):
         self._after_move()
         return True
 
+    def select_for_context(self, item):
+        """
+        우클릭한 행의 선택 규칙: 이미 선택된 행이면 선택을 유지하고(여러 쪽에 한꺼번에 적용),
+        선택되지 않은 행이면 그 행 하나만 선택합니다. 그 행을 포커스 행으로도 기록합니다.
+        """
+        if item not in self.selection():
+            self.selection_set(item)
+            self._anchor = item
+        if self.focus() != item:
+            self.focus(item)
+            self.event_generate("<<RowFocus>>")
+
     # ---- 마우스 처리 ----
     def _on_press(self, event):
         if self.identify_region(event.x, event.y) not in ("tree", "cell"):
@@ -579,7 +594,13 @@ class PageTab(ttk.Frame):
         self.busy = False
         self._undo = []    # 작업 직전의 쪽 목록 기록 [[(경로, 인덱스), ...], ...]
         self._redo = []
+        self.menubar = None       # make_menubar로 만든 메뉴 막대 (창에 붙인 경우)
+        self.menus = {}           # 메뉴 이름 -> Menu ("파일", "편집", "도움말")
+        self._menu_conds = {}     # Menu 경로 -> [(항목 위치, 조건), ...]
+        self._menu_index = {}     # (Menu 경로, 항목 이름) -> 항목 위치
+        self._context_path = None  # 우클릭한 행의 PDF 경로 (행이 아닌 곳을 우클릭하면 None)
         self._build_widgets()
+        self._build_context_menu()
         self._bind_shortcuts()
 
     def _build_widgets(self):
@@ -761,6 +782,22 @@ class PageTab(ttk.Frame):
         for mod in mods:
             for key in ("z", "Z", "y", "Y"):
                 self.bind_all(f"<{mod}-{key}>", self._on_undo_key, add="+")
+            # 불러오기(O)와 저장(S). 대문자는 Caps Lock이 켜진 경우
+            for key, action in (("o", self.load_pdfs), ("s", self.save)):
+                for k in (key, key.upper()):
+                    self.bind_all(f"<{mod}-{k}>", lambda e, a=action: self._on_file_key(e, a), add="+")
+
+    def _on_file_key(self, event, action):
+        if not self.winfo_ismapped():
+            return None
+        # 대화 상자(이미지 저장 옵션 등)가 열린 동안에는 처리하지 않음
+        try:
+            if event.widget.winfo_toplevel() is not self.winfo_toplevel():
+                return None
+        except (AttributeError, KeyError, tk.TclError):
+            return None
+        action()
+        return "break"
 
     def _on_undo_key(self, event):
         if not self.winfo_ismapped():
@@ -773,6 +810,191 @@ class PageTab(ttk.Frame):
         else:
             self.undo()
         return "break"
+
+    # ---- 메뉴 막대와 우클릭 메뉴 ----
+    # 메뉴 항목은 (이름, 동작, 단축키 표시, 조건) 또는 None(구분선)입니다. 조건은 항목을 켤 때를 정합니다.
+    #   None: 작업 중(저장 등)이 아닐 때, "always": 항상, "rows": 목록에 쪽이 있을 때,
+    #   "selection": 선택한 쪽이 있을 때, "undo"/"redo": 되돌릴 기록이 있을 때, "row": 행을 우클릭했을 때
+    APP_NAME = "PDF 도구"
+    EDITION = "경량판"
+    LIBRARIES = ("pypdf",)  # 프로그램 정보에 버전을 표시할 라이브러리 (배포 이름)
+
+    def _file_menu_items(self):
+        return [
+            ("PDF 불러오기...", self.load_pdfs, f"{MOD}+O", None),
+            ("새 PDF로 저장...", self.save, f"{MOD}+S", "rows"),
+        ]
+
+    def _move_menu_items(self):
+        return [
+            ("위로", lambda: self.shift(-1), None, "selection"),
+            ("아래로", lambda: self.shift(1), None, "selection"),
+            ("맨 위로", lambda: self.move_to(1), None, "selection"),
+            ("맨 아래로", lambda: self.move_to(10**9), None, "selection"),
+            ("위치 지정 이동...", self.move_to_dialog, None, "selection"),
+        ]
+
+    def menu_items(self):
+        """메뉴 막대의 구성 [(메뉴 이름, [항목, ...]), ...]"""
+        return [
+            ("파일", self._file_menu_items() + [None, ("종료", self.quit_app, None, "always")]),
+            ("편집", [
+                ("실행 취소", self.undo, f"{MOD}+Z", "undo"),
+                ("다시 실행", self.redo, f"{MOD}+Y", "redo"),
+                None,
+                ("전체 선택", self.select_all, f"{MOD}+A", "rows"),
+                ("선택 삭제", self.delete_selected, "Delete", "selection"),
+                None,
+                *self._move_menu_items(),
+                None,
+                ("목록 비우기", self.clear_all, None, "rows"),
+            ]),
+            ("도움말", [
+                ("단축키와 마우스 사용법", self.show_shortcuts, None, "always"),
+                ("프로그램 정보", self.show_about, None, "always"),
+            ]),
+        ]
+
+    def context_menu_items(self):
+        """쪽 목록의 우클릭 메뉴 구성"""
+        return [
+            ("이 파일의 쪽 모두 선택", self.select_file_pages, None, "row"),
+            None,
+            *self._move_menu_items(),
+            None,
+            ("선택 삭제", self.delete_selected, "Delete", "selection"),
+        ]
+
+    def make_menubar(self, root):
+        """창(root)에 메뉴 막대를 만들어 붙입니다. 각 메뉴를 열 때마다 항목의 사용 가능 여부를 갱신합니다."""
+        menubar = tk.Menu(root, tearoff=0)
+        self.menus = {}
+        for name, items in self.menu_items():
+            menu = tk.Menu(menubar, tearoff=0)
+            self._fill_menu(menu, items)
+            menu.configure(postcommand=lambda m=menu: self.update_menu(m))
+            menubar.add_cascade(label=name, menu=menu)
+            self.menus[name] = menu
+        root.configure(menu=menubar)
+        self.menubar = menubar
+        return menubar
+
+    def _fill_menu(self, menu, items):
+        conds = []
+        for item in items:
+            if item is None:
+                menu.add_separator()
+                continue
+            label, command, accel, cond = item
+            menu.add_command(label=label, command=command, accelerator=accel or "")
+            index = menu.index("end")
+            conds.append((index, cond))
+            self._menu_index[(str(menu), label)] = index
+        self._menu_conds[str(menu)] = conds
+
+    def menu_entry(self, menu, label):
+        """메뉴 항목의 위치. 항목 이름은 메뉴를 만들 때의 이름입니다(우클릭 메뉴의 파일 이름 표시는 제외)."""
+        return self._menu_index[(str(menu), label)]
+
+    def _menu_condition(self, cond):
+        if cond == "always":
+            return True
+        if self.busy:
+            return False
+        if cond == "rows":
+            return bool(self.tree.get_children())
+        if cond == "selection":
+            return bool(self.tree.selection())
+        if cond == "undo":
+            return bool(self._undo)
+        if cond == "redo":
+            return bool(self._redo)
+        if cond == "row":
+            return self._context_path is not None
+        return True
+
+    def update_menu(self, menu):
+        for index, cond in self._menu_conds.get(str(menu), ()):
+            menu.entryconfigure(index, state="normal" if self._menu_condition(cond) else "disabled")
+
+    def _build_context_menu(self):
+        self.context_menu = tk.Menu(self, tearoff=0)
+        self._fill_menu(self.context_menu, self.context_menu_items())
+        self.tree.bind("<Button-3>", self._on_context)
+        if IS_MAC:  # macOS에서는 오른쪽 버튼이 Button-2로 오는 경우가 있고, Control+클릭도 우클릭으로 씀
+            self.tree.bind("<Button-2>", self._on_context)
+            self.tree.bind("<Control-Button-1>", self._on_context)
+
+    def _on_context(self, event):
+        tree = self.tree
+        if tree._dragging or tree.identify_region(event.x, event.y) not in ("tree", "cell", "nothing"):
+            return None  # 끄는 중이거나 열 머리글에서는 메뉴를 띄우지 않음
+        tree.focus_set()
+        item = tree.identify_row(event.y)
+        if item and not tree.bbox(item):
+            item = ""  # 목록 아래 바깥 좌표에서는 보이지 않는 행이 나올 수 있음
+        self._context_path = self.pages[item][0] if item else None
+        if item:
+            tree.select_for_context(item)
+        index = self.menu_entry(self.context_menu, "이 파일의 쪽 모두 선택")
+        label = "이 파일의 쪽 모두 선택"
+        if self._context_path:
+            label += f" ({os.path.basename(self._context_path)})"
+        self.context_menu.entryconfigure(index, label=label)
+        self.update_menu(self.context_menu)
+        self.popup_menu(self.context_menu, event.x_root, event.y_root)
+        return "break"
+
+    def popup_menu(self, menu, x, y):
+        """메뉴를 화면 좌표 (x, y)에 띄웁니다. 테스트에서는 이 메서드를 바꿔치기합니다."""
+        try:
+            menu.tk_popup(x, y)
+        finally:
+            menu.grab_release()
+
+    def select_file_pages(self, path=None):
+        """path(기본값은 우클릭한 행의 파일)에서 불러온 쪽을 목록에서 모두 선택하고, 선택한 쪽 수를 반환합니다."""
+        path = path or self._context_path
+        if path is None:
+            return 0
+        rows = [iid for iid in self.tree.get_children() if self.pages[iid][0] == path]
+        self.tree.selection_set(rows)
+        return len(rows)
+
+    def quit_app(self):
+        self.winfo_toplevel().destroy()
+
+    def shortcut_lines(self):
+        return [
+            f"{MOD}+O\tPDF 불러오기",
+            f"{MOD}+S\t새 PDF로 저장",
+            f"{MOD}+Z\t실행 취소 (최대 {UNDO_LIMIT}단계)",
+            f"{MOD}+Y, {MOD}+Shift+Z\t다시 실행",
+            f"{MOD}+A\t전체 선택 (쪽 목록에서)",
+            "Delete\t선택 삭제 (쪽 목록에서)",
+            "",
+            "마우스로 행을 끌기\t순서 바꾸기 (선택한 쪽들이 놓은 위치에 모임)",
+            f"{MOD}+클릭\t쪽을 하나씩 선택에 더하거나 빼기",
+            "Shift+클릭\t범위 선택",
+            "우클릭\t쪽 메뉴 (이 파일의 쪽 모두 선택, 이동, 삭제)",
+        ]
+
+    def show_shortcuts(self):
+        messagebox.showinfo("단축키와 마우스 사용법", "\n".join(self.shortcut_lines()), parent=self)
+
+    def about_text(self):
+        lines = [f"{self.APP_NAME} ({self.EDITION})", ""]
+        for name in self.LIBRARIES:
+            try:
+                version = importlib.metadata.version(name)
+            except importlib.metadata.PackageNotFoundError:
+                version = "버전 확인 불가"
+            lines.append(f"{name} {version}")
+        lines.append(f"Python {platform.python_version()}, Tk {self.tk.call('info', 'patchlevel')}")
+        return "\n".join(lines)
+
+    def show_about(self):
+        messagebox.showinfo("프로그램 정보", self.about_text(), parent=self)
 
     # ---- 편집 ----
     def update_status(self):

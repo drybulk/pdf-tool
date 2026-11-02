@@ -7,6 +7,7 @@ PDF 도구 렌더링판: 경량판의 기능에 쪽 썸네일과 큰 미리보�
 
 경량판의 기능(쪽 추출, 순서 편집, 병합)에 더해, 쪽 목록의 각 행에 썸네일을 표시하고
 마지막으로 클릭한 쪽을 오른쪽에 크게 보여 줍니다. 쪽을 PNG, JPG 이미지 파일로 저장할 수 있습니다.
+"이미지로 저장"은 아래쪽 버튼, 파일 메뉴, 쪽 목록의 우클릭 메뉴에 있습니다.
 """
 
 import math
@@ -68,6 +69,16 @@ class RenderPageTab(PageTab):
         self.image_btn.pack(side="right", padx=(0, 5))
         self._image_dialog = None
         self.bind("<Destroy>", self._on_destroy, add="+")
+
+    # ---- 메뉴 ----
+    EDITION = "렌더링판"
+    LIBRARIES = ("pypdf", "pypdfium2", "Pillow")
+
+    def _file_menu_items(self):
+        return super()._file_menu_items() + [("이미지로 저장...", self.save_images, None, "rows")]
+
+    def context_menu_items(self):
+        return super().context_menu_items() + [None, ("이미지로 저장...", self.save_images, None, "rows")]
 
     # ---- 화면 배치 ----
     def _make_list_frame(self, body):
@@ -464,15 +475,22 @@ class ImageSaveDialog(tk.Toplevel):
 
 
 # ---------------------------------------------------------------------------
-def main():
-    root = tk.Tk()
+def build_window(root):
+    """창(root)에 제목, 크기, 메뉴 막대, 렌더링판 화면을 붙이고 화면(RenderPageTab)을 반환합니다."""
     root.title("PDF 도구 (렌더링판): 병합 / 페이지 추출")
     w, h = fit_window_size(*WINDOW_SIZE, root.winfo_screenwidth(), root.winfo_screenheight())
     root.geometry(f"{w}x{h}")
     root.minsize(min(900, w), min(560, h))
 
-    RenderPageTab(root).pack(fill="both", expand=True)
+    page = RenderPageTab(root)
+    page.make_menubar(root)
+    page.pack(fill="both", expand=True)
+    return page
 
+
+def main():
+    root = tk.Tk()
+    build_window(root)
     root.mainloop()
 
 
