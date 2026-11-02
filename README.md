@@ -29,7 +29,7 @@ python pdf_tool_render.py
 
 렌더링판은 `pdf_common.py`와 `pdf_render.py`가 같은 폴더에 있어야 합니다. 기본 창 크기는 1200×750이며, 화면이 작으면 화면 안에 들어오도록 줄어듭니다.
 
-검증한 환경은 Python 3.12, pypdf 5.9.0입니다.
+`requirements.txt`는 pypdf 5.9 이상을 요구합니다. 2026-11-02에 Linux, Python 3.12.3에서 pypdf 5.9.0과 6.21.4(pypdfium2 5.14.0, Pillow 13.0.0)로 전체 테스트를 실행해 모두 통과했습니다. Windows에서도 Python 3.12로 테스트를 실행해 확인했습니다(확인한 시점마다 라이브러리 버전은 다릅니다).
 
 ## 기능
 
@@ -100,3 +100,4 @@ Linux에서는 `python3-tk`와 `xvfb`가 필요합니다.
 
 - `CLAUDE.md`: 작업 원칙과 프로젝트 맥락 (Claude Code가 세션 시작 때 읽는 파일)
 - `docs/extension_plan.md`: 미리보기, 이미지 저장, 메뉴 구조의 확장 계획
+- `THIRD_PARTY_NOTICES.md`: 사용하는 외부 라이브러리의 라이선스와 저작권 고지
