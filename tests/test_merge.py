@@ -93,7 +93,7 @@ def outline_of(path):
 a3 = make_pdf(os.path.join(tmp, "a3.pdf"), "A", 3)
 a2 = with_outline(a3, os.path.join(tmp, "a2.pdf"), [("1장", 0, None), ("1.1절", 1, "1장"), ("2장", 2, None)])
 b2 = with_outline(b, os.path.join(tmp, "b2.pdf"), [("B장", 1, None)])
-assert T.outline_entries(PdfReader(a2)) == [("1장", 0, 0), ("1.1절", 1, 1), ("2장", 2, 0)]
+assert [e[:3] for e in T.outline_entries(PdfReader(a2))] == [("1장", 0, 0), ("1.1절", 1, 1), ("2장", 2, 0)]
 
 # 6. 기본값은 지금까지와 같이 북마크 없음
 whole = [(a2, i) for i in range(3)] + [(b2, i) for i in range(3)]
@@ -136,4 +136,93 @@ assert outline_of(out) == [
 T.save_pages(pages, out, keep_outlines=True)
 assert outline_of(out) == [(0, "1장", 1), (1, "1.1절", 3), (0, "B장", 2)], outline_of(out)
 print("9. 구간이 나뉜 상하 관계 OK")
+# 10~12. 이름 붙은 대상(named destination)과 본문 링크: 쪽 안의 위치(좌표) 유지
+from pypdf.generic import (ArrayObject, DictionaryObject, Fit, FloatObject, NameObject, NullObject,
+                           RectangleObject, TextStringObject)
+
+
+def with_links(src, dst, names):
+    """
+    LaTeX(hyperref) 논문처럼 만듦. names: [(이름, 대상 쪽 인덱스, 위쪽 좌표), ...]
+    첫 쪽에 이름마다 링크 2개(/A GoTo 방식과 /Dest 방식)를 넣음. 첫 번째 이름은 북마크도 같은 위치를 가리킴.
+    """
+    w = PdfWriter(clone_from=src)
+    for name, idx, top in names:
+        arr = ArrayObject([w.pages[idx].indirect_reference, NameObject("/XYZ"), FloatObject(72), FloatObject(top), NullObject()])
+        w.add_named_destination_array(TextStringObject(name), arr)
+        for key, value in [
+            ("/A", DictionaryObject({NameObject("/S"): NameObject("/GoTo"), NameObject("/D"): TextStringObject(name)})),
+            ("/Dest", TextStringObject(name)),
+        ]:
+            annot = DictionaryObject({
+                NameObject("/Type"): NameObject("/Annot"), NameObject("/Subtype"): NameObject("/Link"),
+                NameObject("/Rect"): RectangleObject((10, 10, 50, 50)), NameObject(key): value,
+            })
+            w.pages[0].setdefault(NameObject("/Annots"), ArrayObject()).append(w._add_object(annot))
+    name, idx, top = names[0]
+    w.add_outline_item(name, idx, fit=Fit.xyz(72, top, None))
+    with open(dst, "wb") as f:
+        w.write(f)
+    return dst
+
+
+def named(path):
+    """{이름: (1부터 시작하는 쪽 번호, 대상 종류, 위쪽 좌표)}"""
+    r = PdfReader(path)
+    return {k: (r.get_destination_page_number(v) + 1, v["/Type"], v.get("/Top")) for k, v in r.named_destinations.items()}
+
+
+def link_names(path, page):
+    """그 쪽의 링크가 가리키는 이름 목록 (주석 순서대로)"""
+    r = PdfReader(path)
+    result = []
+    for ref in r.pages[page].get("/Annots", []):
+        a = ref.get_object()
+        result.append(str(a["/A"]["/D"]) if "/A" in a else str(a["/Dest"]))
+    return result
+
+
+p4 = make_pdf(os.path.join(tmp, "p4.pdf"), "P", 4)
+q3 = make_pdf(os.path.join(tmp, "q3.pdf"), "Q", 3)
+pl = with_links(p4, os.path.join(tmp, "pl.pdf"), [("cite.a", 3, 300), ("figure.1", 2, 500)])
+ql = with_links(q3, os.path.join(tmp, "ql.pdf"), [("figure.1", 2, 400)])
+
+# 10. 전체를 저장해도, 일부 쪽만 순서를 바꿔 저장해도 원본 좌표(/XYZ 위쪽 좌표)를 유지한다
+T.save_pages([(pl, i) for i in range(4)], out)
+assert named(out) == {"cite.a": (4, "/XYZ", 300), "figure.1": (3, "/XYZ", 500)}, named(out)
+T.save_pages([(pl, 3), (pl, 0)], out)                   # 4쪽, 1쪽 순서. 3쪽(figure.1)은 빠짐
+assert named(out) == {"cite.a": (1, "/XYZ", 300)}, named(out)
+assert link_names(out, 1) == ["cite.a", "cite.a", "figure.1", "figure.1"]
+T.save_pages([(pl, 0), (pl, 3), (pl, 3)], out)          # 같은 쪽 두 번: 처음 나오는 위치
+assert named(out)["cite.a"] == (2, "/XYZ", 300), named(out)
+# 원본 북마크도 쪽 안의 위치를 유지한다
+T.save_pages([(pl, i) for i in range(4)], out, keep_outlines=True)
+r = PdfReader(out)
+assert [(o.title, r.get_destination_page_number(o) + 1, o["/Type"], o["/Top"]) for o in r.outline] == [("cite.a", 4, "/XYZ", 300)]
+print("10. 이름 붙은 대상과 북마크의 위치 유지 OK")
+
+# 11. 두 논문을 합칠 때 이름이 겹치면 뒤 논문의 이름을 바꾸고, 뒤 논문의 링크도 바꾼 이름을 가리킨다
+pages = [(pl, i) for i in range(4)] + [(ql, i) for i in range(3)]
+T.save_pages(pages, out)
+assert named(out) == {
+    "cite.a": (4, "/XYZ", 300), "figure.1": (3, "/XYZ", 500), "figure.1~2": (7, "/XYZ", 400)
+}, named(out)
+assert link_names(out, 0) == ["cite.a", "cite.a", "figure.1", "figure.1"]
+assert link_names(out, 4) == ["figure.1~2", "figure.1~2"]
+# 순서를 바꿔 뒤 논문의 쪽이 먼저 나와도, 이름은 파일이 처음 나오는 순서로 정함
+T.save_pages([(ql, 0), (ql, 2), (pl, 0), (pl, 2)], out)
+assert named(out) == {"figure.1": (2, "/XYZ", 400), "figure.1~2": (4, "/XYZ", 500)}, named(out)
+assert link_names(out, 0) == ["figure.1", "figure.1"]
+assert link_names(out, 2) == ["cite.a", "cite.a", "figure.1~2", "figure.1~2"]
+print("11. 여러 논문의 이름 충돌 처리 OK")
+
+# 12. 저장해도 불러온 원본(readers 캐시)은 바뀌지 않는다 (같은 목록을 다시 저장해도 결과가 같음)
+readers = {}
+T.save_pages(pages, out, readers=readers)
+first = named(out)
+assert link_names(ql, 0) == ["figure.1", "figure.1"]
+assert [str(a.get_object().get("/Dest") or a.get_object()["/A"]["/D"]) for a in readers[ql].pages[0]["/Annots"]] == ["figure.1", "figure.1"]
+T.save_pages(pages, out, readers=readers)
+assert named(out) == first and link_names(out, 4) == ["figure.1~2", "figure.1~2"], (named(out), link_names(out, 4))
+print("12. 원본 보존 OK")
 print("ALL MERGE TESTS PASSED")

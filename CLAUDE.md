@@ -22,8 +22,9 @@ PDF 병합, 쪽 범위 추출, 쪽 단위 순서 편집(마우스 드래그)을 
 ## 현재 구조
 
 `pdf_common.py` (경량판과 렌더링판의 공통 모듈):
-- 처리 로직 함수: `open_pdf`, `parse_page_ranges`, `merge_pdfs`, `save_pages`, `outline_entries`, `run_background`
+- 처리 로직 함수: `open_pdf`, `parse_page_ranges`, `merge_pdfs`, `save_pages`, `outline_entries`, `dest_fit`, `copy_named_destinations`, `run_background`
   - `merge_pdfs`는 `writer.append`를 사용하므로 원본 북마크가 유지됩니다. `save_pages`는 `add_page`를 사용하므로 북마크를 직접 다시 만들며, `file_bookmarks`(파일 이름 북마크)와 `keep_outlines`(원본 북마크 유지) 인자로 제어합니다. 두 인자의 기본값은 False입니다.
+  - `save_pages`는 본문 링크(인용 번호, 그림 번호 등)가 가리키는 이름 붙은 대상(named destination)을 `copy_named_destinations`로 원본 좌표(/XYZ 등)까지 옮깁니다. pypdf의 `add_page`는 이 이름을 저장할 때 쪽 맨 위(/FitH)로 다시 만들기 때문입니다(pypdf 6.21.4, 5.9.0에서 확인). 여러 PDF의 이름이 겹치면 뒤 파일의 이름을 `이름~2`로 바꾸고 그 파일 쪽의 링크도 바꿉니다. 원본 북마크도 `dest_fit`으로 쪽 안의 위치를 유지합니다.
 - `DragTree(ttk.Treeview)`: 마우스 드래그 정렬, Ctrl/Shift 선택, 자동 스크롤. `PageTab`의 쪽 목록이 이 위젯을 사용합니다.
   - 끄는 동안에는 행을 움직이지 않고, 놓을 위치에 빨간 가로 표시선(`_indicator`, 목록 위에 `place()`로 겹친 Frame)을 보여 줍니다. 마우스가 행의 위쪽 절반에 있으면 그 행 앞, 아래쪽 절반에 있으면 그 행 뒤가 놓을 위치입니다(`_drop_slot`).
   - 마우스를 놓으면 선택한 행들이 상대 순서를 유지한 채 그 위치에 모입니다(`_gather_selection`). "위치 지정 이동"(`move_selection_to`)도 같은 함수를 사용합니다.

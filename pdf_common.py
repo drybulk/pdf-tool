@@ -18,6 +18,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from pypdf import PdfReader, PdfWriter
+from pypdf.generic import ArrayObject, ByteStringObject, Fit, NameObject, TextStringObject
 
 
 IS_MAC = sys.platform == "darwin"
@@ -95,10 +96,22 @@ def merge_pdfs(paths, output_path, add_bookmarks=True, progress=None):
     return len(writer.pages)
 
 
+def dest_fit(dest):
+    """
+    pypdf의 Destination에서 쪽 안의 위치(예: /XYZ 왼쪽 위쪽 배율)를 Fit으로 꺼냅니다.
+    읽을 수 없으면 쪽 전체 보기(/Fit)를 반환합니다.
+    """
+    try:
+        return Fit(dest["/Type"], list(dest.dest_array)[2:])
+    except Exception:
+        return Fit.fit()
+
+
 def outline_entries(reader):
     """
-    원본 PDF의 북마크(목차)를 [(제목, 0부터 시작하는 쪽 인덱스 또는 None, 깊이), ...]로 펼칩니다.
-    순서는 목차에 보이는 순서(깊이 우선)입니다. 목차를 읽을 수 없으면 빈 목록을 반환합니다.
+    원본 PDF의 북마크(목차)를 [(제목, 0부터 시작하는 쪽 인덱스 또는 None, 깊이, 쪽 안의 위치), ...]로 펼칩니다.
+    쪽 안의 위치는 dest_fit의 결과입니다. 순서는 목차에 보이는 순서(깊이 우선)입니다.
+    목차를 읽을 수 없으면 빈 목록을 반환합니다.
     """
     entries = []
 
@@ -111,7 +124,7 @@ def outline_entries(reader):
                 index = reader.get_destination_page_number(item)
             except Exception:
                 index = None
-            entries.append((item.title, index, depth))
+            entries.append((item.title, index, depth, dest_fit(item)))
 
     try:
         walk(reader.outline, 0)
@@ -129,6 +142,8 @@ def save_pages(pages, output_path, progress=None, readers=None, file_bookmarks=F
         같은 쪽이 여러 번 들어 있으면 처음 나오는 위치를 가리킵니다. 상위 항목이 빠지면
         남아 있는 가장 가까운 상위 항목(없으면 그 쪽이 속한 구간의 파일 이름 북마크) 아래에 둡니다.
         파일 이름 북마크를 만들 때는 같은 구간에 있는 상위 항목만 사용합니다.
+    본문의 링크(인용 번호, 그림 번호 등)가 가리키는 이름 붙은 대상(named destination)은
+    옵션과 관계없이 원본의 쪽 안 위치를 유지합니다(copy_named_destinations).
     """
     readers = readers if readers is not None else {}
     writer = PdfWriter()
@@ -151,13 +166,15 @@ def save_pages(pages, output_path, progress=None, readers=None, file_bookmarks=F
             item = writer.add_outline_item(title, pos) if file_bookmarks else None
         run_of[pos], run_item[pos] = run, item
 
+    first_pos = {}  # (경로, 쪽 인덱스) -> 결과에서 처음 나오는 위치
+    for pos, key in enumerate(pages):
+        first_pos.setdefault(key, pos)
+    copy_named_destinations(writer, pages, readers, first_pos)
+
     if keep_outlines:
-        first_pos = {}  # (경로, 쪽 인덱스) -> 결과에서 처음 나오는 위치
-        for pos, key in enumerate(pages):
-            first_pos.setdefault(key, pos)
         for path in dict.fromkeys(p for p, _ in pages):  # 파일이 처음 나오는 순서
             stack = []  # [(깊이, 추가한 북마크, 구간 번호), ...] 현재 항목의 상위 항목들
-            for title, index, depth in outline_entries(readers[path]):
+            for title, index, depth, fit in outline_entries(readers[path]):
                 while stack and stack[-1][0] >= depth:
                     stack.pop()
                 pos = first_pos.get((path, index))
@@ -168,12 +185,84 @@ def save_pages(pages, output_path, progress=None, readers=None, file_bookmarks=F
                     if not file_bookmarks or ancestor_run == run_of[pos]:
                         parent = ancestor
                         break
-                item = writer.add_outline_item(title, pos, parent=parent)
+                item = writer.add_outline_item(title, pos, parent=parent, fit=fit)
                 stack.append((depth, item, run_of[pos]))
 
     with open(output_path, "wb") as f:
         writer.write(f)
     return total
+
+
+def copy_named_destinations(writer, pages, readers, first_pos):
+    """
+    원본 PDF의 이름 붙은 대상(named destination)을 쪽 안의 위치(좌표)까지 그대로 결과에 옮깁니다.
+    LaTeX(hyperref)로 만든 논문의 인용 번호, 그림 번호, 절 번호 링크는 이 이름을 가리킵니다.
+    pypdf의 add_page는 이 이름을 저장할 때 쪽 맨 위(/FitH)로 다시 만들기 때문에, 그보다 먼저
+    원본 좌표로 등록해 둡니다(pypdf는 이미 있는 이름은 다시 만들지 않음).
+    - 가리키는 쪽이 결과에 없는 이름은 옮기지 않습니다. 같은 쪽이 여러 번 들어 있으면 처음 나오는 위치를 가리킵니다.
+    - 여러 PDF를 합칠 때 앞 파일과 이름이 겹치면(예: 두 논문 모두 "figure.1") 뒤 파일의 이름을 "이름~2"처럼
+      바꾸고, 그 파일에서 온 쪽의 링크도 바꾼 이름을 가리키게 합니다. 그대로 두면 뒤 논문의 링크가
+      앞 논문의 위치로 이동합니다.
+    """
+    used = set()     # 앞 파일들이 가진 이름
+    entries = {}     # 결과에 넣을 이름 -> 대상 배열
+    renames = {}     # 경로 -> {원래 이름: 바꾼 이름} (바뀐 것만)
+    for path in dict.fromkeys(p for p, _ in pages):  # 파일이 처음 나오는 순서
+        reader = readers[path]
+        try:
+            named = reader.named_destinations
+        except Exception:
+            continue
+        mapping = {}
+        for name in named:
+            new, k = name, 2
+            while new in used:
+                new, k = f"{name}~{k}", k + 1
+            mapping[name] = new
+        used.update(mapping.values())
+        renames[path] = {old: new for old, new in mapping.items() if old != new}
+        for name, dest in named.items():
+            try:
+                pos = first_pos.get((path, reader.get_destination_page_number(dest)))
+            except Exception:
+                continue
+            if pos is None:
+                continue
+            fit = dest_fit(dest)
+            entries[mapping[name]] = ArrayObject([writer.pages[pos].indirect_reference, fit.fit_type] + fit.fit_args)
+
+    for pos, (path, _) in enumerate(pages):
+        if renames.get(path):
+            _rename_link_targets(writer.pages[pos], renames[path])
+
+    if entries:
+        root = writer.get_named_dest_root()  # [이름, 대상, 이름, 대상, ...] 이름 순서로 정렬된 배열
+        existing = {str(root[i]): root[i + 1] for i in range(0, len(root) - 1, 2)}
+        existing.update(entries)
+        root.clear()
+        for name in sorted(existing):
+            root.extend([TextStringObject(name), existing[name]])
+
+
+def _rename_link_targets(page, mapping):
+    """쪽의 링크 주석이 가리키는 이름(/Dest 또는 /A의 /D)을 mapping에 따라 바꿉니다."""
+    for ref in page.get("/Annots") or []:
+        annot = ref.get_object()
+        if annot.get("/Subtype") != "/Link":
+            continue
+        dest = annot.get("/Dest")
+        if isinstance(dest, (TextStringObject, ByteStringObject)) and str(dest) in mapping:
+            annot[NameObject("/Dest")] = TextStringObject(mapping[str(dest)])
+        action = annot.get("/A")
+        if action is not None:
+            action = action.get_object()
+            target = action.get("/D")
+            if action.get("/S") == "/GoTo" and isinstance(target, (TextStringObject, ByteStringObject)) \
+                    and str(target) in mapping:
+                # 같은 동작 객체를 다른 쪽이 함께 쓰고 있을 수 있으므로 고치지 않고 새로 만들어 바꿔 끼움
+                new_action = action.__class__(action)
+                new_action[NameObject("/D")] = TextStringObject(mapping[str(target)])
+                annot[NameObject("/A")] = new_action
 
 
 def run_background(widget, work, on_progress, on_done, on_error):
