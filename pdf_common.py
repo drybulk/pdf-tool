@@ -639,20 +639,22 @@ class PageTab(ttk.Frame):
         ]:
             ttk.Button(btns, text=text, command=cmd, width=14).pack(pady=3)
 
-        ttk.Label(
+        hint = ttk.Label(
             self,
             text="행을 마우스로 끌어 순서를 바꿀 수 있습니다. Ctrl/Shift+클릭으로 여러 쪽을 선택해 함께 옮길 수 있습니다.\n"
                  "여러 PDF를 불러오면 목록 순서대로 이어 붙여 하나의 PDF로 저장합니다.",
             foreground="#555555",
-        ).pack(anchor="w", padx=10)
+        )
+        hint.pack(anchor="w", padx=10)
 
         # 저장 옵션
         opts = ttk.Frame(self)
         opts.pack(fill="x", padx=10, pady=(5, 0))
         self.keep_outline_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(
+        self.keep_outline_check = ttk.Checkbutton(
             opts, text="원본 북마크(목차) 유지", variable=self.keep_outline_var
-        ).pack(side="left")
+        )
+        self.keep_outline_check.pack(side="left")
         self.file_bookmark_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(
             opts, text="파일 이름으로 북마크 추가", variable=self.file_bookmark_var
@@ -668,6 +670,11 @@ class PageTab(ttk.Frame):
 
         self.progress = ttk.Progressbar(self, mode="determinate")
         self.progress.pack(fill="x", padx=10, pady=(0, 10))
+
+        # 창이 낮을 때 저장 버튼과 진행 막대가 밀려나지 않고 쪽 목록이 줄어들도록, 목록 아래의 위젯들을
+        # 아래쪽부터 먼저 배치함 (pack은 먼저 배치한 위젯에 공간을 먼저 줌). 화면에 보이는 순서는 그대로임
+        for w in (self.progress, bottom, opts, hint):
+            w.pack_configure(side="bottom", before=body)
 
     def _make_list_frame(self, body):
         """쪽 목록을 담을 프레임을 만들어 배치합니다. 렌더링판은 이 메서드를 바꿔서 미리보기 영역을 함께 둡니다."""
