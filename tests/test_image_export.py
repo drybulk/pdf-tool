@@ -154,7 +154,11 @@ assert out["result"] == {"scope": "all", "format": "PNG", "dpi": 150, "quality":
 dx, dy = out["pos"]
 cx = root.winfo_rootx() + root.winfo_width() // 2
 cy = root.winfo_rooty() + root.winfo_height() // 2
-assert abs(dx - cx) < 5 and abs(dy - cy) < 5, (out["pos"], (cx, cy))
+# geometry("+x+y")는 창 테두리와 제목 표시줄을 포함한 바깥 모서리의 위치이고, winfo_rootx/rooty는 그 안쪽 내용
+# 영역의 위치입니다. 그래서 창 관리자가 테두리를 그리는 Windows에서는 대화 상자의 내용이 계산한 위치보다
+# 오른쪽 아래로 밀립니다(Windows 11, 배율 100%에서 9, 37픽셀). 화면 배율이 크면 더 커질 수 있으므로 80픽셀까지
+# 허용합니다. 이전처럼 화면 왼쪽 위에 뜨면 1200x750 창 기준으로 수백 픽셀 차이가 나므로 구분됩니다.
+assert abs(dx - cx) < 80 and abs(dy - cy) < 80, (out["pos"], (cx, cy))
 
 out = run_dialog(lambda d: d.ok(), 2, 3)
 assert out["state"]["scope"] == "selected"                         # 선택한 쪽이 있으면 기본값은 "선택한 쪽"
