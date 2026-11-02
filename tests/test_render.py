@@ -186,8 +186,9 @@ tree.focus_force(); root.update()
 tree.event_generate("<Down>"); pump(0.3)
 assert preview_key() == (BIG, 3), preview_key()
 # 나눔 경계를 옮겨 미리보기 영역 크기가 바뀌면 다시 그림
+# 미리보기 그림은 높이에 맞춰질 수도 있으므로(Windows처럼 위젯이 높으면), 영역 폭을 지금 그림 폭보다 좁게 만듦
 old_w = page._preview_img.width()
-page.paned.sashpos(0, page.paned.sashpos(0) + 150); pump(0.5)
+page.paned.sashpos(0, page.paned.winfo_width() - int(old_w * 0.7)); pump(0.5)
 assert page._preview_img.width() < old_w, (page._preview_img.width(), old_w)
 print("8. 미리보기 OK")
 
