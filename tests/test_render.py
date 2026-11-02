@@ -114,7 +114,17 @@ def order():
 def has_image(iid):
     return bool(tree.item(iid, "image"))
 def rowy(idx):
-    x, y, w, h = tree.bbox(tree.get_children()[idx]); return y + h // 2
+    # 창이 낮으면(Windows처럼 위젯이 높을 때) 행이 목록 아래로 일부 또는 전부 가려질 수 있음.
+    # 일부만 보이는 행은 see()가 스크롤하지 않고, 행 가운데 좌표가 목록 밖이 되어 클릭이 목록에 닿지 않으므로
+    # 행 전체가 보일 때까지 한 칸씩 스크롤함
+    iid = tree.get_children()[idx]
+    tree.see(iid); root.update()
+    for _ in range(len(tree.get_children())):
+        box = tree.bbox(iid)
+        if box and box[1] + box[3] <= tree.winfo_height():
+            break
+        tree.yview_scroll(1, "units"); root.update()
+    x, y, w, h = tree.bbox(iid); return y + h // 2
 def click(idx, state=0):
     y = rowy(idx)
     tree.event_generate("<ButtonPress-1>", x=150, y=y, state=state); root.update()
