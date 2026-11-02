@@ -213,12 +213,18 @@ def copy_named_destinations(writer, pages, readers, first_pos):
             named = reader.named_destinations
         except Exception:
             continue
-        mapping = {}
+        # 겹치지 않는 이름은 그대로 두고 먼저 예약함. 겹치는 이름에는 앞 파일, 이 파일의 다른 이름,
+        # 이미 새로 붙인 이름과 모두 다른 이름을 붙임 (이 파일에 "figure.1~2"가 원래 있을 수도 있음)
+        mapping = {name: name for name in named if name not in used}
+        taken = used | set(named)
         for name in named:
-            new, k = name, 2
-            while new in used:
+            if name in mapping:
+                continue
+            new, k = f"{name}~2", 3
+            while new in taken:
                 new, k = f"{name}~{k}", k + 1
             mapping[name] = new
+            taken.add(new)
         used.update(mapping.values())
         renames[path] = {old: new for old, new in mapping.items() if old != new}
         for name, dest in named.items():

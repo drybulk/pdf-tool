@@ -214,6 +214,12 @@ T.save_pages([(ql, 0), (ql, 2), (pl, 0), (pl, 2)], out)
 assert named(out) == {"figure.1": (2, "/XYZ", 400), "figure.1~2": (4, "/XYZ", 500)}, named(out)
 assert link_names(out, 0) == ["figure.1", "figure.1"]
 assert link_names(out, 2) == ["cite.a", "cite.a", "figure.1~2", "figure.1~2"]
+# 이미 합친 PDF처럼 뒤 파일에 "figure.1"과 "figure.1~2"가 함께 있어도 서로 다른 이름이 됨
+r2 = make_pdf(os.path.join(tmp, "r2.pdf"), "R", 2)
+rl = with_links(r2, os.path.join(tmp, "rl.pdf"), [("figure.1", 0, 100), ("figure.1~2", 1, 200)])
+T.save_pages([(pl, 2), (rl, 0), (rl, 1)], out)
+assert named(out) == {"figure.1": (1, "/XYZ", 500), "figure.1~3": (2, "/XYZ", 100), "figure.1~2": (3, "/XYZ", 200)}, named(out)
+assert link_names(out, 1) == ["figure.1~3", "figure.1~3", "figure.1~2", "figure.1~2"], link_names(out, 1)
 print("11. 여러 논문의 이름 충돌 처리 OK")
 
 # 12. 저장해도 불러온 원본(readers 캐시)은 바뀌지 않는다 (같은 목록을 다시 저장해도 결과가 같음)
