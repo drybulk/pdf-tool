@@ -25,7 +25,7 @@ PDF 병합, 쪽 범위 추출, 쪽 단위 순서 편집(마우스 드래그)을 
 - 처리 로직 함수: `open_pdf`, `parse_page_ranges`, `merge_pdfs`, `save_pages`, `outline_entries`, `dest_fit`, `copy_named_destinations`, `run_background`
 - 이미지 불러오기: `is_image_file`(확장자 `IMAGE_EXTENSIONS`), `image_to_pdf`(이미지 파일 → PDF 바이트), `open_source`(이미지면 PDF로 바꿔서 연 PdfReader). Pillow는 `try: from PIL import Image`로 가져오며 `HAS_PILLOW`로 확인합니다.
   - 이미지 1장 = 1쪽, 쪽 너비 `IMAGE_PAGE_WIDTH`(A4 너비 595.28pt), 높이는 비율대로, 여백 없음. 여러 쪽 TIFF는 쪽마다 1쪽, 움직이는 GIF/WebP는 첫 장면만.
-  - JPG(RGB, 회색조)는 파일 내용을 그대로 DCTDecode로 넣고, Exif 방향 3/6/8은 쪽의 /Rotate로 반영합니다. 거울상 방향, CMYK JPG, 그 밖의 형식은 `_flatten_image`로 8비트 RGB/회색조로 바꿔(투명은 흰색 합성, 16비트 회색조는 256으로 나눔) zlib 수준 6으로 넣습니다. PDF 파일은 `_build_image_pdf`가 직접 씁니다(pypdf의 비공개 API를 쓰지 않기 위해).
+  - JPG(RGB, 회색조)는 파일 내용을 그대로 DCTDecode로 넣고, Exif 방향 3/6/8은 쪽의 /Rotate로 반영합니다. 거울상 방향, CMYK JPG, 그 밖의 형식은 `_flatten_image`로 8비트 RGB/회색조로 바꿔(투명은 흰색 합성, 16비트 회색조는 화소 값과 관계없이 256으로 나눔) zlib 수준 6으로 넣습니다. PDF 파일은 `_build_image_pdf`가 직접 씁니다(pypdf의 비공개 API를 쓰지 않기 위해).
   - `PageTab.open_source(path)`가 PdfReader를 `self.readers`에, 이미지로 만든 PDF 바이트를 `self.image_pdfs`에 보관합니다. 행은 PDF와 똑같이 (이미지 경로, 쪽 인덱스)로 식별하므로 실행 취소, 저장, 북마크, 이미지로 저장은 그대로 동작합니다. 쪽 범위 입력은 PDF에만 적용합니다.
   - 불러오는 동안 창의 커서를 기다림 표시(`watch`)로 바꿉니다. 4000×3000 PNG 사진 1장 변환에 컨테이너에서 약 1~3초 걸렸습니다(JPG는 다시 압축하지 않으므로 거의 즉시).
   - `merge_pdfs`는 `writer.append`를 사용하므로 원본 북마크가 유지됩니다. `save_pages`는 `add_page`를 사용하므로 북마크를 직접 다시 만들며, `file_bookmarks`(파일 이름 북마크)와 `keep_outlines`(원본 북마크 유지) 인자로 제어합니다. 두 인자의 기본값은 False입니다.

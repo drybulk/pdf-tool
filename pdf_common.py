@@ -349,9 +349,11 @@ def image_to_pdf(path, page_width=IMAGE_PAGE_WIDTH):
 
 def _flatten_image(img):
     """이미지를 8비트 RGB 또는 회색조(L)로 바꿉니다. 투명한 부분은 흰색 바탕에 합성합니다."""
-    if img.mode.startswith("I") or img.mode == "F":  # 16비트 회색조 등
-        if img.getextrema()[1] > 255:
-            img = img.point(lambda v: v / 256)  # convert("L")은 255를 넘는 값을 잘라 버리므로 먼저 줄임
+    if img.mode.startswith("I"):  # 16비트 회색조 (Pillow 버전에 따라 "I;16" 또는 "I"로 열림)
+        # 0~65535 범위를 0~255로 줄임. convert("L")은 255를 넘는 값을 잘라 버림. 화소 값이 아니라 비트 수로
+        # 배율을 정해야 어두운 이미지나 여러 쪽 TIFF의 쪽마다 밝기가 달라지지 않음
+        img = img.point(lambda v: v / 256).convert("L")
+    elif img.mode == "F":
         img = img.convert("L")
     elif img.mode == "1":
         img = img.convert("L")

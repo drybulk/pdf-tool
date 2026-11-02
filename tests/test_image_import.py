@@ -121,6 +121,12 @@ g16.save(tmp("g16.png"))
 x = xobject(PdfReader(io.BytesIO(C.image_to_pdf(tmp("g16.png")))).pages[0])
 assert x["/ColorSpace"] == "/DeviceGray"
 assert abs(page_image(PdfReader(io.BytesIO(C.image_to_pdf(tmp("g16.png")))).pages[0]).getpixel((5, 5)) - 40000 // 256) <= 1
+dark16 = Image.new("I;16", (60, 40), 128)                 # 모든 값이 255 이하인 어두운 16비트 이미지도 256으로 나눔
+dark16.save(tmp("dark16.png"))
+assert page_image(PdfReader(io.BytesIO(C.image_to_pdf(tmp("dark16.png")))).pages[0]).getpixel((5, 5)) <= 1
+for mode in ("I;16", "I"):                                 # Pillow 버전에 따라 16비트 PNG가 "I"로 열리기도 함
+    img = C._flatten_image(Image.new(mode, (4, 4), 40000))
+    assert img.mode == "L" and abs(img.getpixel((0, 0)) - 156) <= 1, (mode, img.getpixel((0, 0)))
 
 Image.new("CMYK", (50, 50), (0, 255, 255, 0)).save(tmp("cmyk.jpg"))   # CMYK JPG는 RGB로 바꿔서 넣음
 x = xobject(PdfReader(io.BytesIO(C.image_to_pdf(tmp("cmyk.jpg")))).pages[0])
