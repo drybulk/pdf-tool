@@ -1,7 +1,7 @@
 """
 PDF 도구 렌더링판: 경량판의 기능에 쪽 썸네일과 큰 미리보기를 더한 GUI입니다.
 
-필요한 외부 라이브러리: pypdf, pypdfium2, Pillow (Pillow는 JPG 저장에만 사용)
+필요한 외부 라이브러리: pypdf, pypdfium2, Pillow (Pillow는 JPG 저장과 이미지 파일 불러오기에 사용)
     pip install -r requirements-render.txt
 실행에는 같은 폴더의 pdf_common.py와 pdf_render.py가 필요합니다.
 
@@ -52,7 +52,8 @@ class RenderPageTab(PageTab):
     """
 
     def __init__(self, master):
-        self.docs = PdfiumDocs()
+        # 이미지 파일에서 불러온 쪽은 PageTab.open_source가 만들어 둔 PDF 바이트로 그림
+        self.docs = PdfiumDocs(source=lambda path: self.image_pdfs.get(path, path))
         self.thumbs = LRUCache(THUMB_CACHE_SIZE, on_evict=self._on_thumb_evicted)
         self._row_key = {}       # 행 ID -> 그 행에 붙인 썸네일의 키 (경로, 쪽 인덱스)
         self._key_rows = {}      # 썸네일 키 -> 그 썸네일을 붙인 행 ID 집합

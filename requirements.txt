@@ -1,1 +1,2 @@
 pypdf>=5.9
+# 이미지 파일(PNG, JPG 등)을 쪽으로 불러오려면 Pillow도 설치합니다(선택): pip install pillow

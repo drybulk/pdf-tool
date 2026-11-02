@@ -1,2 +1,4 @@
 # 테스트용 PDF를 만들 때만 필요합니다.
 reportlab
+# 이미지 불러오기 테스트(tests/test_image_import.py)에 필요합니다.
+pillow>=12,<14

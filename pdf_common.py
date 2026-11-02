@@ -4,12 +4,14 @@ PDF 도구 공통 모듈: 경량판(pdf_tool.py)과 렌더링판이 함께 사�
 - PDF 처리 로직: open_pdf, parse_page_ranges, merge_pdfs, save_pages, outline_entries
 - 백그라운드 실행: run_background
 - 마우스 드래그로 행 순서를 바꿀 수 있는 목록 위젯: DragTree
+- 이미지 파일을 쪽으로 바꾸기: is_image_file, image_to_pdf, open_source
 - 화면: PageTab (페이지 추출 / 편집 / 병합, 메뉴 막대와 우클릭 메뉴)
 
-필요한 외부 라이브러리: pypdf
+필요한 외부 라이브러리: pypdf (이미지 파일을 불러올 때는 Pillow도 필요. 없으면 PDF만 불러올 수 있음)
 """
 
 import importlib.metadata
+import io
 import os
 import platform
 import queue
@@ -17,15 +19,31 @@ import re
 import sys
 import threading
 import tkinter as tk
+import zlib
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import ArrayObject, ByteStringObject, Fit, NameObject, TextStringObject
 
+try:
+    # 이미지 파일을 쪽으로 불러올 때만 사용. 없으면 PDF만 불러올 수 있음
+    from PIL import Image, ImageOps, ImageSequence
+except ImportError:
+    Image = None
+
+HAS_PILLOW = Image is not None
+
 
 IS_MAC = sys.platform == "darwin"
 UNDO_LIMIT = 100  # 실행 취소로 되돌릴 수 있는 최대 단계 수
 MOD = "Cmd" if IS_MAC else "Ctrl"  # 메뉴에 표시하는 단축키 수정자 키 이름
+
+# 쪽으로 불러올 수 있는 이미지 파일의 확장자 (소문자)
+IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tif", ".tiff", ".webp")
+# 이미지로 만든 쪽의 너비(pt). A4 너비 210mm에 맞추고, 높이는 이미지의 가로세로 비율대로 정합니다.
+IMAGE_PAGE_WIDTH = 210 / 25.4 * 72
+# JPG의 Exif 방향 값 -> 쪽의 회전 각도(/Rotate, 시계 방향). 거울상 방향(2, 4, 5, 7)은 그림을 다시 만듦
+_JPEG_ROTATE = {1: 0, 3: 180, 6: 90, 8: 270}
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +156,8 @@ def outline_entries(reader):
 
 def save_pages(pages, output_path, progress=None, readers=None, file_bookmarks=False, keep_outlines=False):
     """
-    pages: [(PDF 경로, 0부터 시작하는 쪽 인덱스), ...] 순서대로 새 PDF를 만듭니다.
+    pages: [(PDF 경로, 0부터 시작하는 쪽 인덱스), ...] 순서대로 새 PDF를 만듭니다. 경로가 이미지 파일이면
+    image_to_pdf로 만든 쪽을 사용합니다.
     readers: {경로: PdfReader} 캐시 (없으면 새로 읽음). 저장한 총 쪽수를 반환합니다.
     file_bookmarks: 같은 파일의 쪽이 이어지는 구간마다 그 첫 쪽에 파일 이름 북마크를 추가합니다.
     keep_outlines: 원본 PDF의 북마크 중 가리키는 쪽이 결과에 들어 있는 것을 유지합니다.
@@ -153,7 +172,7 @@ def save_pages(pages, output_path, progress=None, readers=None, file_bookmarks=F
     total = len(pages)
     for n, (path, idx) in enumerate(pages, start=1):
         if path not in readers:
-            readers[path] = open_pdf(path)
+            readers[path] = open_source(path)
         writer.add_page(readers[path].pages[idx])
         if progress and (n % 10 == 0 or n == total):
             progress(n, total)
@@ -272,6 +291,116 @@ def _rename_link_targets(page, mapping):
                 new_action = action.__class__(action)
                 new_action[NameObject("/D")] = TextStringObject(mapping[str(target)])
                 annot[NameObject("/A")] = new_action
+
+
+def is_image_file(path):
+    """확장자로 이미지 파일인지 판단합니다 (IMAGE_EXTENSIONS, 대소문자 구분 없음)."""
+    return os.path.splitext(path)[1].lower() in IMAGE_EXTENSIONS
+
+
+def open_source(path):
+    """
+    불러올 파일을 열어 PdfReader를 반환합니다. 이미지 파일이면 image_to_pdf로 바꾼 PDF를 엽니다.
+    열 수 없으면 ValueError를 발생시킵니다.
+    """
+    if is_image_file(path):
+        return open_pdf(io.BytesIO(image_to_pdf(path)))
+    return open_pdf(path)
+
+
+def image_to_pdf(path, page_width=IMAGE_PAGE_WIDTH):
+    """
+    이미지 파일을 PDF 파일 내용(바이트)으로 바꿉니다. Pillow가 필요합니다.
+    - 이미지 1장이 1쪽입니다. 여러 쪽짜리 TIFF는 쪽마다 1쪽이고, 움직이는 GIF, WebP 등은 첫 장면만 씁니다.
+    - 쪽 너비는 page_width(pt, 기본값은 A4 너비)이고 높이는 이미지의 가로세로 비율대로 정합니다. 여백은 없습니다.
+    - JPG(RGB, 회색조)는 다시 압축하지 않고 파일 내용을 그대로 넣습니다(DCTDecode). Exif 방향 정보는
+      쪽 회전(/Rotate)으로 반영합니다. 휴대폰 사진은 대부분 방향 정보로 세워 보이게 합니다.
+    - 그 밖의 이미지는 화소를 무손실 압축(FlateDecode)해서 넣습니다. 투명한 부분은 흰색으로 채웁니다.
+    읽을 수 없으면 ValueError를 발생시킵니다.
+    """
+    if Image is None:
+        raise ValueError("이미지를 불러오려면 Pillow가 필요합니다: pip install pillow")
+    try:
+        with open(path, "rb") as f:
+            raw = f.read()
+        pages = []
+        with Image.open(io.BytesIO(raw)) as im:
+            if im.format == "JPEG":
+                rotate = _JPEG_ROTATE.get(im.getexif().get(0x0112, 1))
+                if im.mode in ("RGB", "L") and rotate is not None:
+                    color = "DeviceRGB" if im.mode == "RGB" else "DeviceGray"
+                    pages.append((im.width, im.height, rotate, color, "DCTDecode", raw))
+            if not pages:
+                frames = ImageSequence.Iterator(im) if im.format == "TIFF" else [im]
+                for frame in frames:
+                    img = _flatten_image(ImageOps.exif_transpose(frame))
+                    color = "DeviceRGB" if img.mode == "RGB" else "DeviceGray"
+                    pages.append((img.width, img.height, 0, color, "FlateDecode", zlib.compress(img.tobytes(), 6)))
+    except Exception as e:
+        raise ValueError(f"이미지를 읽을 수 없습니다: {e}")
+
+    sized = []
+    for w, h, rotate, color, filt, data in pages:
+        shown_w = w if rotate in (0, 180) else h  # 회전한 뒤 화면에 보이는 가로 화소 수
+        scale = page_width / shown_w
+        sized.append((w * scale, h * scale, rotate, w, h, color, filt, data))
+    return _build_image_pdf(sized)
+
+
+def _flatten_image(img):
+    """이미지를 8비트 RGB 또는 회색조(L)로 바꿉니다. 투명한 부분은 흰색 바탕에 합성합니다."""
+    if img.mode.startswith("I") or img.mode == "F":  # 16비트 회색조 등
+        if img.getextrema()[1] > 255:
+            img = img.point(lambda v: v / 256)  # convert("L")은 255를 넘는 값을 잘라 버리므로 먼저 줄임
+        img = img.convert("L")
+    elif img.mode == "1":
+        img = img.convert("L")
+    if img.mode in ("RGBA", "LA", "PA", "RGBa", "La") or "transparency" in img.info:
+        gray = img.mode in ("L", "LA", "La")
+        rgba = img.convert("RGBA")
+        base = Image.new("RGB", img.size, (255, 255, 255))
+        base.paste(rgba, mask=rgba.getchannel("A"))
+        img = base.convert("L") if gray else base
+    if img.mode not in ("RGB", "L"):
+        img = img.convert("RGB")  # 팔레트, CMYK, YCbCr 등
+    return img
+
+
+def _build_image_pdf(pages):
+    """
+    pages: [(쪽 너비 pt, 쪽 높이 pt, 회전, 화소 너비, 화소 높이, 색 공간, 필터, 압축된 데이터), ...]
+    쪽마다 이미지 하나를 쪽 전체에 그리는 PDF 파일 내용을 만듭니다.
+    """
+    def num(x):
+        return f"{x:.4f}".rstrip("0").rstrip(".")
+
+    objs = []  # 1번 객체부터 순서대로. 1: 문서, 2: 쪽 목록, 이후 쪽마다 (쪽, 내용, 이미지)
+    kids = " ".join(f"{3 + 3 * i} 0 R" for i in range(len(pages)))
+    objs.append(b"<< /Type /Catalog /Pages 2 0 R >>")
+    objs.append(f"<< /Type /Pages /Kids [{kids}] /Count {len(pages)} >>".encode())
+    for i, (pw, ph, rotate, w, h, color, filt, data) in enumerate(pages):
+        content_ref, image_ref = 4 + 3 * i, 5 + 3 * i
+        content = f"q {num(pw)} 0 0 {num(ph)} 0 0 cm /Im0 Do Q".encode()
+        objs.append(
+            f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {num(pw)} {num(ph)}] /Rotate {rotate} "
+            f"/Resources << /XObject << /Im0 {image_ref} 0 R >> >> /Contents {content_ref} 0 R >>".encode()
+        )
+        objs.append(f"<< /Length {len(content)} >>\nstream\n".encode() + content + b"\nendstream")
+        objs.append(
+            f"<< /Type /XObject /Subtype /Image /Width {w} /Height {h} /ColorSpace /{color} "
+            f"/BitsPerComponent 8 /Filter /{filt} /Length {len(data)} >>\nstream\n".encode() + data + b"\nendstream"
+        )
+    out = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+    offsets = []
+    for n, body in enumerate(objs, start=1):
+        offsets.append(len(out))
+        out += f"{n} 0 obj\n".encode() + body + b"\nendobj\n"
+    xref = len(out)
+    out += f"xref\n0 {len(objs) + 1}\n0000000000 65535 f \n".encode()
+    for off in offsets:
+        out += f"{off:010d} 00000 n \n".encode()
+    out += f"trailer\n<< /Size {len(objs) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+    return bytes(out)
 
 
 def run_background(widget, work, on_progress, on_done, on_error):
@@ -591,6 +720,7 @@ class PageTab(ttk.Frame):
         super().__init__(master)
         self.pages = {}    # 행 ID -> (PDF 경로, 0부터 시작하는 쪽 인덱스)
         self.readers = {}  # PDF 경로 -> PdfReader (다시 읽지 않도록 보관)
+        self.image_pdfs = {}  # 이미지 파일 경로 -> 그 이미지로 만든 PDF 파일 내용 (렌더링판이 쪽을 그릴 때 사용)
         self.busy = False
         self._undo = []    # 작업 직전의 쪽 목록 기록 [[(경로, 인덱스), ...], ...]
         self._redo = []
@@ -614,10 +744,11 @@ class PageTab(ttk.Frame):
         entry = ttk.Entry(top, textvariable=self.range_var, width=22)
         entry.pack(side="left", padx=5)
         entry.bind("<Return>", lambda e: self.load_pdfs())
-        ttk.Button(top, text="PDF 불러오기", command=self.load_pdfs).pack(side="left", padx=5)
+        ttk.Button(top, text="PDF/이미지 불러오기", command=self.load_pdfs).pack(side="left", padx=5)
         ttk.Label(
             self,
-            text="범위 예: 721-732  /  1-3, 10, 15-20  /  5-  (비워 두면 전체).  쪽 번호는 PDF 뷰어의 쪽 번호 기준입니다.",
+            text="범위 예: 721-732  /  1-3, 10, 15-20  /  5-  (비워 두면 전체).  쪽 번호는 PDF 뷰어의 쪽 번호 기준입니다.\n"
+                 "이미지(PNG, JPG 등)는 1장을 1쪽(A4 너비)으로 불러오며, 쪽 범위는 PDF에만 적용합니다.",
             foreground="#555555",
         ).pack(anchor="w", padx=10)
 
@@ -704,31 +835,64 @@ class PageTab(ttk.Frame):
         return list_frame
 
     # ---- 불러오기 ----
+    @staticmethod
+    def _open_filetypes():
+        def patterns(exts):
+            # Windows와 macOS의 파일 대화 상자는 대소문자를 구분하지 않지만, Linux는 구분하므로 대문자도 넣음
+            exts = list(exts) + ([] if sys.platform in ("win32", "darwin") else [e.upper() for e in exts])
+            return " ".join(f"*{e}" for e in exts)
+
+        return [
+            ("PDF와 이미지", patterns((".pdf",) + IMAGE_EXTENSIONS)),
+            ("PDF 파일", patterns((".pdf",))),
+            ("이미지 파일", patterns(IMAGE_EXTENSIONS)),
+            ("모든 파일", "*.*"),
+        ]
+
+    def open_source(self, path):
+        """
+        불러올 파일을 열어 PdfReader를 반환하고 보관합니다. 이미지 파일은 image_to_pdf로 바꾼 PDF를 열고,
+        그 내용을 self.image_pdfs에 보관합니다. 열 수 없으면 ValueError를 발생시킵니다.
+        """
+        if path not in self.readers:
+            if is_image_file(path):
+                data = image_to_pdf(path)
+                self.readers[path] = open_pdf(io.BytesIO(data))
+                self.image_pdfs[path] = data
+            else:
+                self.readers[path] = open_pdf(path)
+        return self.readers[path]
+
     def load_pdfs(self):
+        """PDF와 이미지 파일을 골라 목록 끝에 추가합니다. 쪽 범위는 PDF에만 적용하고, 이미지는 모든 쪽을 넣습니다."""
         if self.busy:
             return
         range_text = self.range_var.get()
-        paths = filedialog.askopenfilenames(
-            title="PDF 파일 선택", filetypes=[("PDF 파일", "*.pdf"), ("모든 파일", "*.*")]
-        )
+        paths = filedialog.askopenfilenames(title="PDF 또는 이미지 파일 선택", filetypes=self._open_filetypes())
         if not paths:
             return
 
         before = self.snapshot()
         errors, first_new, added = [], None, 0
-        for path in paths:
-            try:
-                reader = self.readers.get(path) or open_pdf(path)
-                indices = parse_page_ranges(range_text, len(reader.pages))
-            except ValueError as e:
-                errors.append(f"{os.path.basename(path)}: {e}")
-                continue
-            self.readers[path] = reader
-            for idx in indices:
-                iid = self.tree.insert("", "end", values=(0, os.path.basename(path), idx + 1))
-                self.pages[iid] = (path, idx)
-                first_new = first_new or iid
-            added += len(indices)
+        top = self.winfo_toplevel()
+        top.configure(cursor="watch")  # 큰 이미지는 PDF로 바꾸는 데 몇 초 걸릴 수 있음
+        top.update_idletasks()
+        try:
+            for path in paths:
+                try:
+                    reader = self.open_source(path)
+                    total = len(reader.pages)
+                    indices = list(range(total)) if is_image_file(path) else parse_page_ranges(range_text, total)
+                except ValueError as e:
+                    errors.append(f"{os.path.basename(path)}: {e}")
+                    continue
+                for idx in indices:
+                    iid = self.tree.insert("", "end", values=(0, os.path.basename(path), idx + 1))
+                    self.pages[iid] = (path, idx)
+                    first_new = first_new or iid
+                added += len(indices)
+        finally:
+            top.configure(cursor="")
         if added:
             self._push_undo(before)
         self.tree.renumber()
@@ -817,11 +981,11 @@ class PageTab(ttk.Frame):
     #   "selection": 선택한 쪽이 있을 때, "undo"/"redo": 되돌릴 기록이 있을 때, "row": 행을 우클릭했을 때
     APP_NAME = "PDF 도구"
     EDITION = "경량판"
-    LIBRARIES = ("pypdf",)  # 프로그램 정보에 버전을 표시할 라이브러리 (배포 이름)
+    LIBRARIES = ("pypdf", "Pillow")  # 프로그램 정보에 버전을 표시할 라이브러리 (배포 이름). 경량판의 Pillow는 이미지 불러오기용(선택)
 
     def _file_menu_items(self):
         return [
-            ("PDF 불러오기...", self.load_pdfs, f"{MOD}+O", None),
+            ("PDF/이미지 불러오기...", self.load_pdfs, f"{MOD}+O", None),
             ("새 PDF로 저장...", self.save, f"{MOD}+S", "rows"),
         ]
 
@@ -966,7 +1130,7 @@ class PageTab(ttk.Frame):
 
     def shortcut_lines(self):
         return [
-            f"{MOD}+O\tPDF 불러오기",
+            f"{MOD}+O\tPDF/이미지 불러오기",
             f"{MOD}+S\t새 PDF로 저장",
             f"{MOD}+Z\t실행 취소 (최대 {UNDO_LIMIT}단계)",
             f"{MOD}+Y, {MOD}+Shift+Z\t다시 실행",
@@ -988,7 +1152,7 @@ class PageTab(ttk.Frame):
             try:
                 version = importlib.metadata.version(name)
             except importlib.metadata.PackageNotFoundError:
-                version = "버전 확인 불가"
+                version = "설치되지 않음" if name == "Pillow" else "버전 확인 불가"
             lines.append(f"{name} {version}")
         lines.append(f"Python {platform.python_version()}, Tk {self.tk.call('info', 'patchlevel')}")
         return "\n".join(lines)

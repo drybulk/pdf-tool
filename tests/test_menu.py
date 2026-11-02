@@ -81,7 +81,7 @@ SELECT_FILE = "이 파일의 쪽 모두 선택"
 menubar = page.menubar
 assert str(root.cget("menu")) == str(menubar)
 assert [menubar.entrycget(i, "label") for i in range(menubar.index("end") + 1)] == ["파일", "편집", "도움말"]
-assert labels(FILE) == ["PDF 불러오기...", "새 PDF로 저장...", "-", "종료"], labels(FILE)
+assert labels(FILE) == ["PDF/이미지 불러오기...", "새 PDF로 저장...", "-", "종료"], labels(FILE)
 assert labels(EDIT) == [
     "실행 취소", "다시 실행", "-", "전체 선택", "선택 삭제", "-",
     "위로", "아래로", "맨 위로", "맨 아래로", "위치 지정 이동...", "-", "목록 비우기",
@@ -97,7 +97,7 @@ print("1. 메뉴 구성 OK")
 # ---------- 2. 빈 목록일 때 항목 상태 ----------
 for m in (FILE, EDIT, HELP):
     page.update_menu(m)
-assert state(FILE, "PDF 불러오기...") == "normal" and state(FILE, "새 PDF로 저장...") == "disabled"
+assert state(FILE, "PDF/이미지 불러오기...") == "normal" and state(FILE, "새 PDF로 저장...") == "disabled"
 assert state(FILE, "종료") == "normal"
 for label in ("실행 취소", "다시 실행", "전체 선택", "선택 삭제", "위로", "위치 지정 이동...", "목록 비우기"):
     assert state(EDIT, label) == "disabled", label
@@ -110,7 +110,7 @@ print("2. 빈 목록일 때 비활성화 OK")
 for rng, path in (("1-3", BIG), ("", SMALL), ("4-5", BIG)):
     page.range_var.set(rng)
     filedialog.askopenfilenames = lambda p=path, **k: (p,)
-    invoke(FILE, "PDF 불러오기...")
+    invoke(FILE, "PDF/이미지 불러오기...")
 assert order() == ["b1", "b2", "b3", "s1", "s2", "s3", "s4", "s5", "b4", "b5"], order()
 page.update_menu(EDIT)
 assert state(EDIT, "실행 취소") == "normal" and state(EDIT, "선택 삭제") == "disabled"  # 아직 선택 없음
@@ -206,7 +206,7 @@ invoke(FILE, "새 PDF로 저장...")
 assert page.busy
 for m in (FILE, EDIT, CTX):
     page.update_menu(m)
-assert state(FILE, "PDF 불러오기...") == "disabled" and state(FILE, "새 PDF로 저장...") == "disabled"
+assert state(FILE, "PDF/이미지 불러오기...") == "disabled" and state(FILE, "새 PDF로 저장...") == "disabled"
 assert state(FILE, "종료") == "normal" and state(EDIT, "실행 취소") == "disabled" and state(CTX, "선택 삭제") == "disabled"
 end = time.time() + 20
 while page.busy and time.time() < end:
@@ -263,7 +263,7 @@ if HAS_RENDER:
     rpage.popup_menu = lambda menu, x, y: popups.append(menu)
     pump(0.2)
     rfile = rpage.menus["파일"]
-    assert labels(rfile) == ["PDF 불러오기...", "새 PDF로 저장...", "이미지로 저장...", "-", "종료"], labels(rfile)
+    assert labels(rfile) == ["PDF/이미지 불러오기...", "새 PDF로 저장...", "이미지로 저장...", "-", "종료"], labels(rfile)
     assert labels(rpage.context_menu)[-2:] == ["-", "이미지로 저장..."], labels(rpage.context_menu)
     rpage.update_menu(rfile)
     assert str(rfile.entrycget(rpage.menu_entry(rfile, "이미지로 저장..."), "state")) == "disabled"

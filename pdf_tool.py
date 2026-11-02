@@ -1,7 +1,7 @@
 """
 PDF 도구: 병합 / 페이지 추출 및 순서 편집 (GUI)
 
-필요한 외부 라이브러리: pypdf 1개
+필요한 외부 라이브러리: pypdf 1개 (이미지 파일도 불러오려면 Pillow, 선택)
     pip install pypdf
 GUI는 파이썬에 기본 포함된 tkinter를 사용합니다.
 실행에는 이 파일과 같은 폴더의 공통 모듈 pdf_common.py가 필요합니다.

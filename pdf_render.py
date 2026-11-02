@@ -115,9 +115,14 @@ def fit_scale(page_w, page_h, box_w, box_h):
 
 
 class PdfiumDocs:
-    """경로별 PdfDocument를 열어 두고 쪽 크기 조회와 렌더링을 제공합니다."""
+    """
+    경로별 PdfDocument를 열어 두고 쪽 크기 조회와 렌더링을 제공합니다.
+    source(경로)를 주면 그 결과(파일 경로 또는 PDF 바이트)를 엽니다. 이미지 파일로 만든 쪽은
+    파일이 PDF가 아니므로, 화면이 보관한 PDF 바이트를 이 함수로 넘겨받습니다.
+    """
 
-    def __init__(self):
+    def __init__(self, source=None):
+        self._source = source
         self._docs = {}   # PDF 경로 -> PdfDocument
         self._sizes = {}  # (경로, 쪽 인덱스) -> (너비, 높이) pt, 쪽의 회전이 반영된 값
 
@@ -125,7 +130,7 @@ class PdfiumDocs:
         doc = self._docs.get(path)
         if doc is None:
             try:
-                doc = pdfium.PdfDocument(path)
+                doc = pdfium.PdfDocument(self._source(path) if self._source else path)
             except pdfium.PdfiumError as e:
                 raise ValueError(f"쪽 그림을 만들 수 없습니다: {e}")
             self._docs[path] = doc

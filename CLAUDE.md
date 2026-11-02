@@ -4,7 +4,7 @@
 
 ## 프로젝트
 
-PDF 병합, 쪽 범위 추출, 쪽 단위 순서 편집(마우스 드래그)을 제공하는 tkinter GUI 프로그램입니다. 사용자는 주로 논문과 보고서 PDF를 다룹니다. `pdf_tool.py`(GUI)와 공통 모듈 `pdf_common.py`로 이루어진 판을 "경량판"이라고 부르며, 외부 라이브러리는 `pypdf`만 사용합니다. 쪽 썸네일과 미리보기를 더한 "렌더링판"은 `pdf_tool_render.py`(GUI)와 `pdf_render.py`(렌더링 모듈)이며, `pdf_common.py`를 함께 사용하고 `pypdfium2`가 추가로 필요합니다. 렌더링판의 JPG 저장에는 `Pillow`도 사용합니다(없으면 PNG만 저장).
+PDF 병합, 쪽 범위 추출, 쪽 단위 순서 편집(마우스 드래그)을 제공하는 tkinter GUI 프로그램입니다. 사용자는 주로 논문과 보고서 PDF를 다룹니다. `pdf_tool.py`(GUI)와 공통 모듈 `pdf_common.py`로 이루어진 판을 "경량판"이라고 부르며, 외부 라이브러리는 `pypdf`만 사용합니다. 쪽 썸네일과 미리보기를 더한 "렌더링판"은 `pdf_tool_render.py`(GUI)와 `pdf_render.py`(렌더링 모듈)이며, `pdf_common.py`를 함께 사용하고 `pypdfium2`가 추가로 필요합니다. 렌더링판의 JPG 저장에는 `Pillow`도 사용합니다(없으면 PNG만 저장). 이미지 파일을 쪽으로 불러오는 기능도 `Pillow`를 사용하며, 경량판에서는 선택 사항입니다(없으면 PDF만 불러옴).
 
 ## 작업 원칙
 
@@ -23,6 +23,11 @@ PDF 병합, 쪽 범위 추출, 쪽 단위 순서 편집(마우스 드래그)을 
 
 `pdf_common.py` (경량판과 렌더링판의 공통 모듈):
 - 처리 로직 함수: `open_pdf`, `parse_page_ranges`, `merge_pdfs`, `save_pages`, `outline_entries`, `dest_fit`, `copy_named_destinations`, `run_background`
+- 이미지 불러오기: `is_image_file`(확장자 `IMAGE_EXTENSIONS`), `image_to_pdf`(이미지 파일 → PDF 바이트), `open_source`(이미지면 PDF로 바꿔서 연 PdfReader). Pillow는 `try: from PIL import Image`로 가져오며 `HAS_PILLOW`로 확인합니다.
+  - 이미지 1장 = 1쪽, 쪽 너비 `IMAGE_PAGE_WIDTH`(A4 너비 595.28pt), 높이는 비율대로, 여백 없음. 여러 쪽 TIFF는 쪽마다 1쪽, 움직이는 GIF/WebP는 첫 장면만.
+  - JPG(RGB, 회색조)는 파일 내용을 그대로 DCTDecode로 넣고, Exif 방향 3/6/8은 쪽의 /Rotate로 반영합니다. 거울상 방향, CMYK JPG, 그 밖의 형식은 `_flatten_image`로 8비트 RGB/회색조로 바꿔(투명은 흰색 합성, 16비트 회색조는 256으로 나눔) zlib 수준 6으로 넣습니다. PDF 파일은 `_build_image_pdf`가 직접 씁니다(pypdf의 비공개 API를 쓰지 않기 위해).
+  - `PageTab.open_source(path)`가 PdfReader를 `self.readers`에, 이미지로 만든 PDF 바이트를 `self.image_pdfs`에 보관합니다. 행은 PDF와 똑같이 (이미지 경로, 쪽 인덱스)로 식별하므로 실행 취소, 저장, 북마크, 이미지로 저장은 그대로 동작합니다. 쪽 범위 입력은 PDF에만 적용합니다.
+  - 불러오는 동안 창의 커서를 기다림 표시(`watch`)로 바꿉니다. 4000×3000 PNG 사진 1장 변환에 컨테이너에서 약 1~3초 걸렸습니다(JPG는 다시 압축하지 않으므로 거의 즉시).
   - `merge_pdfs`는 `writer.append`를 사용하므로 원본 북마크가 유지됩니다. `save_pages`는 `add_page`를 사용하므로 북마크를 직접 다시 만들며, `file_bookmarks`(파일 이름 북마크)와 `keep_outlines`(원본 북마크 유지) 인자로 제어합니다. 두 인자의 기본값은 False입니다.
   - `save_pages`는 본문 링크(인용 번호, 그림 번호 등)가 가리키는 이름 붙은 대상(named destination)을 `copy_named_destinations`로 원본 좌표(/XYZ 등)까지 옮깁니다. pypdf의 `add_page`는 이 이름을 저장할 때 쪽 맨 위(/FitH)로 다시 만들기 때문입니다(pypdf 6.21.4, 5.9.0에서 확인). 여러 PDF의 이름이 겹치면 뒤 파일의 이름을 `이름~2`로 바꾸고 그 파일 쪽의 링크도 바꿉니다. 원본 북마크도 `dest_fit`으로 쪽 안의 위치를 유지합니다.
 - `DragTree(ttk.Treeview)`: 마우스 드래그 정렬, Ctrl/Shift 선택, 자동 스크롤. `PageTab`의 쪽 목록이 이 위젯을 사용합니다.
@@ -56,7 +61,7 @@ PDF 병합, 쪽 범위 추출, 쪽 단위 순서 편집(마우스 드래그)을 
 - 공통 모듈의 이름들을 `from pdf_common import ...`로 가져와 `__all__`로 다시 내보냅니다. 기존 테스트가 `pdf_tool.PageTab`, `pdf_tool.UNDO_LIMIT`처럼 접근하므로 이 방식을 유지합니다.
 
 `pdf_render.py` (렌더링 모듈, pypdfium2 사용):
-- `PdfiumDocs`: 경로별로 `PdfDocument`를 열어 두고 쪽 크기 조회(`page_size`)와 렌더링(`render_ppm`)을 제공합니다. PDFium이 열지 못하면 `ValueError`를 발생시킵니다.
+- `PdfiumDocs(source=None)`: 경로별로 `PdfDocument`를 열어 두고 쪽 크기 조회(`page_size`)와 렌더링(`render_ppm`)을 제공합니다. PDFium이 열지 못하면 `ValueError`를 발생시킵니다. `source(경로)`가 돌려준 값(경로 또는 PDF 바이트)을 엽니다. 렌더링판은 `self.image_pdfs.get(경로, 경로)`를 넘겨서 이미지에서 불러온 쪽을 그립니다.
 - `bitmap_to_ppm`: RGB 비트맵을 PPM(P6) 바이트로 바꿉니다. 행 간격(stride)을 고려해 행 단위로 복사합니다.
 - `thumb_scale`, `fit_scale`: 썸네일 배율(기본 0.12, A4 기준 칸 `THUMB_BOX` = 72×102 픽셀을 넘지 않게 줄임)과 미리보기 배율(영역에 맞춤)을 계산합니다.
 - `LRUCache`: 썸네일 보관용 캐시입니다. 넘치면 가장 오래 쓰지 않은 항목을 버리고 `on_evict`를 호출합니다.
@@ -71,7 +76,7 @@ PDF 병합, 쪽 범위 추출, 쪽 단위 순서 편집(마우스 드래그)을 
   - 그리지 못한 쪽은 회색 칸으로 표시하고 다시 시도하지 않습니다(`_failed`).
   - 미리보기는 포커스 행(마지막으로 클릭하거나 화살표 키로 옮긴 행)을 그리며, 포커스 행이 없으면 선택한 행 중 첫 행을 그립니다. 영역 크기가 바뀌면 150ms 뒤에 다시 그립니다.
   - 목록의 요구 높이는 3행으로 둡니다(`height=3`). 기본값 10행이면 썸네일 행이 높아서 요구 높이가 창보다 커지고, 아래쪽의 저장 버튼과 진행 막대가 밀려나 보이지 않습니다.
-  - 이미지 저장: 아래쪽 "새 PDF로 저장" 버튼 왼쪽의 "이미지로 저장" 버튼, "파일" 메뉴, 우클릭 메뉴(`save_images`) → `ImageSaveDialog`(본 창 가운데에 뜸. 저장할 쪽: 선택한 쪽/목록 전체, 형식, DPI 기본 150, JPG 품질 기본 90) → 폴더 선택 → 겹치는 파일이 있으면 덮어쓸지 한 번 확인 → `export_images`. 아래쪽 버튼은 메뉴를 추가한 뒤에도 남겨 두었습니다(없앨지는 사용자 확인 필요).
+  - 이미지 저장: 아래쪽 "새 PDF로 저장" 버튼 왼쪽의 "이미지로 저장" 버튼, "파일" 메뉴, 우클릭 메뉴(`save_images`) → `ImageSaveDialog`(본 창 가운데에 뜸. 저장할 쪽: 선택한 쪽/목록 전체, 형식, DPI 기본 150, JPG 품질 기본 90) → 폴더 선택 → 겹치는 파일이 있으면 덮어쓸지 한 번 확인 → `export_images`. 아래쪽 버튼은 메뉴를 추가한 뒤에도 남겨 둡니다(2026-11-02 사용자 결정).
   - `export_images`: 렌더링은 메인 스레드에서 한 쪽씩(`after`로 나누어) 하고, PNG/JPG 변환과 파일 쓰기는 별도 스레드에서 합니다. 그린 그림은 큐(`EXPORT_QUEUE` = 2장)로 넘겨서 메모리 사용을 제한합니다. 오류가 나면 멈추고, 변환 스레드가 쓰던 파일까지 끝난 뒤에(스레드가 끝날 때까지 20ms마다 확인) 저장한 개수를 알립니다. 그때까지는 `busy`로 다른 편집을 막습니다.
 - `fit_window_size`: 기본 창 크기 1200×750을 화면 안에 들어오도록 줄입니다(가로 여백 40, 세로 여백 80픽셀).
 - 렌더링은 모두 메인 스레드에서 합니다(PDFium의 스레드 제한).
@@ -103,6 +108,8 @@ PDF 병합, 쪽 범위 추출, 쪽 단위 순서 편집(마우스 드래그)을 
 - 작업 순서는 아래 "작업 순서"(렌더링판, 이미지 저장, 메뉴)를 따릅니다.
 - JPG 저장에 Pillow를 사용합니다(2026-10-30, "라이선스 문제가 없다면 써도 됨"). Windows용 Pillow 13.0.0 wheel의 라이선스 문서를 확인한 결과, 본체(MIT-CMU)와 함께 들어 있는 라이브러리(libjpeg-turbo, FreeType, zlib-ng 등)는 모두 허용형이고 GPL 계열 구성 요소(libimagequant, FriBiDi)는 들어 있지 않았습니다. 실행 파일을 배포할 때 Pillow의 `dist-info/licenses/LICENSE`를 함께 넣어야 합니다(5단계).
 - "파일 이름으로 북마크 추가"는 기본으로 꺼 둡니다(2026-11-02 확정).
+- 아래쪽 "이미지로 저장" 버튼은 메뉴가 생긴 뒤에도 남겨 둡니다(2026-11-02).
+- 불러오기에서 PDF뿐 아니라 이미지 파일도 쪽으로 불러와 PDF 쪽과 섞어 저장할 수 있게 합니다(2026-11-02 요청). 쪽 크기(A4 너비 맞춤), 지원 형식, 쪽 범위는 PDF에만 적용한다는 점은 기본안으로 구현했고 사용자 확인을 기다리는 중입니다.
 - 이미지 저장의 세부 사항(2026-10-30 확정): 진입은 아래쪽 버튼 하나(오른쪽 버튼 영역은 늘리지 않음), 저장할 쪽은 선택한 쪽 또는 목록 전체, DPI 기본 150, JPG 품질 1~95 입력(기본 90), 파일 이름은 원본 쪽 번호 기준이고 겹치면 `_2`, 기존 파일은 덮어쓸지 한 번 확인, Pillow가 없으면 JPG만 비활성화.
 
 아직 결정되지 않은 내용 (작업 전에 사용자에게 확인):
@@ -118,6 +125,7 @@ xvfb-run -a python tests/test_undo.py
 xvfb-run -a python tests/test_common.py
 xvfb-run -a python tests/test_menu.py   # 창 크기를 인자로 줄 수 있음 (예: 1100x600)
 python tests/test_merge.py
+xvfb-run -a python tests/test_image_import.py   # Pillow 필요. pypdfium2가 있으면 렌더링판도 검사
 
 # 렌더링판 (pip install -r requirements-render.txt 필요)
 xvfb-run -a python tests/test_render.py
@@ -132,6 +140,7 @@ xvfb-run -a python tests/test_image_export.py
 - 대화 상자 테스트는 `root.after`로 `page._image_dialog`를 조작한 뒤 `ok()`/`cancel()`을 부릅니다. 검사가 실패해도 대화 상자를 닫아야 `wait_window`에서 멈추지 않습니다. 대화 상자에 키 이벤트를 보내려면 먼저 `focus_force()`가 필요합니다.
 - `test_render.py`의 테스트는 Windows(행이 더 높음)와 다른 창 크기에서도 통과해야 합니다. 행을 클릭하는 `rowy`는 행 전체가 보일 때까지 스크롤한 뒤 좌표를 구합니다. 일부만 보이는 행은 `see()`가 스크롤하지 않아서 행 가운데 좌표가 목록 밖이 될 수 있기 때문입니다. 미리보기 그림은 높이에 맞춰질 수도 있으므로 크기 변화 검사는 영역을 그림보다 좁게 만들어서 합니다. 창 크기를 바꿔 가며(예: 1100×600~1400×750) 확인하면 Windows 실패를 미리 잡을 수 있습니다.
 - PDFium이 그린 그림의 크기는 `쪽 크기 × 배율`을 반올림한 값과 1픽셀 다를 수 있습니다(A4 150 DPI 높이 1754.2 → 1755).
+- `test_image_import.py`는 이미지 → PDF 변환(JPG 그대로 넣기, Exif 방향, 투명, 팔레트, 16비트, CMYK, BMP, WebP, 여러 쪽 TIFF, 움직이는 GIF, 손상 파일, Pillow 없음), PDF와 이미지를 섞어 불러오기(범위는 PDF에만), 순서 바꾸기, 실행 취소, 저장(쪽 크기, JPG 원본 그대로, 파일 이름 북마크), 화면 배치를 검사합니다. pypdfium2가 있으면 렌더링판의 썸네일, 미리보기, 이미지로 저장도 검사합니다.
 - `test_common.py`는 `pdf_tool.py` 없이 `pdf_common.py`만 가져와서 처리 로직, `run_background`, `DragTree`를 검사하고, 마지막에 `pdf_tool.py`가 공통 모듈의 객체(`PageTab` 포함)를 그대로 사용하는지 확인합니다.
 - `xvfb-run`이 없으면 `Xvfb :99 &` 실행 후 `DISPLAY=:99 python tests/test_undo.py`처럼 실행합니다.
 - 화면이 있는 환경에서는 `xvfb-run` 없이 그대로 실행해도 됩니다.
