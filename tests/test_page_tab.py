@@ -41,8 +41,8 @@ messagebox.showerror = lambda *a, **k: msgs.append(("error", a))
 
 root = tk.Tk(); root.geometry("780x560")
 nb = T.ttk.Notebook(root); nb.pack(fill="both", expand=True)
-merge = T.MergeTab(nb); page = T.PageTab(nb)
-nb.add(merge, text="병합"); nb.add(page, text="추출"); nb.select(page)
+page = T.PageTab(nb)
+nb.add(page, text="추출"); nb.select(page)
 root.update()
 tree = page.tree
 

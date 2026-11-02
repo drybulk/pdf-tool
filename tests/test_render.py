@@ -100,8 +100,8 @@ messagebox.showerror = lambda *a, **k: msgs.append(("error", a))
 BIG = make_pdf(os.path.join(TMP, "big.pdf"), "P", 800)
 root = tk.Tk(); root.geometry("1200x750")
 nb = ttk.Notebook(root); nb.pack(fill="both", expand=True)
-merge = R.MergeTab(nb); page = R.RenderPageTab(nb)
-nb.add(merge, text="병합"); nb.add(page, text="추출"); nb.select(page)
+page = R.RenderPageTab(nb)
+nb.add(page, text="추출"); nb.select(page)
 tree = page.tree
 
 def pump(sec=0.0):

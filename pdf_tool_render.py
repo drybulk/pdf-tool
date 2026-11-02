@@ -5,10 +5,8 @@ PDF 도구 렌더링판: 경량판의 기능에 쪽 썸네일과 큰 미리보�
     pip install -r requirements-render.txt
 실행에는 같은 폴더의 pdf_common.py와 pdf_render.py가 필요합니다.
 
-탭 1. PDF 병합         : 경량판과 같습니다.
-탭 2. 페이지 추출/편집 : 경량판의 기능에 더해, 쪽 목록의 각 행에 썸네일을 표시하고
-                         마지막으로 클릭한 쪽을 오른쪽에 크게 보여 줍니다.
-                         쪽을 PNG, JPG 이미지 파일로 저장할 수 있습니다.
+경량판의 기능(쪽 추출, 순서 편집, 병합)에 더해, 쪽 목록의 각 행에 썸네일을 표시하고
+마지막으로 클릭한 쪽을 오른쪽에 크게 보여 줍니다. 쪽을 PNG, JPG 이미지 파일로 저장할 수 있습니다.
 """
 
 import math
@@ -19,7 +17,7 @@ import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from pdf_common import MergeTab, PageTab
+from pdf_common import PageTab
 from pdf_render import (
     DPI_CHOICES, HAS_PILLOW, THUMB_BOX, LRUCache, PdfiumDocs,
     encode_jpg, encode_png, fit_scale, image_file_names, thumb_scale,
@@ -473,10 +471,7 @@ def main():
     root.geometry(f"{w}x{h}")
     root.minsize(min(900, w), min(560, h))
 
-    notebook = ttk.Notebook(root)
-    notebook.pack(fill="both", expand=True)
-    notebook.add(MergeTab(notebook), text="  PDF 병합  ")
-    notebook.add(RenderPageTab(notebook), text="  페이지 추출 / 편집  ")
+    RenderPageTab(root).pack(fill="both", expand=True)
 
     root.mainloop()
 

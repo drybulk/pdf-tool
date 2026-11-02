@@ -191,7 +191,7 @@ print("4-2. 강조색, 화면 표시 OK")
 
 # ---------- 5. 경량판은 공통 모듈의 객체를 그대로 사용한다 ----------
 import pdf_tool as T
-for name in ("IS_MAC", "UNDO_LIMIT", "DragTree", "MergeTab", "PageTab",
+for name in ("IS_MAC", "UNDO_LIMIT", "DragTree", "PageTab",
              "open_pdf", "outline_entries", "parse_page_ranges", "merge_pdfs", "save_pages", "run_background"):
     assert getattr(T, name) is getattr(C, name), name
 print("5. pdf_tool의 공통 이름 연결 OK")

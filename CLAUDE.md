@@ -24,24 +24,24 @@ PDF 병합, 쪽 범위 추출, 쪽 단위 순서 편집(마우스 드래그)을 
 `pdf_common.py` (경량판과 렌더링판의 공통 모듈):
 - 처리 로직 함수: `open_pdf`, `parse_page_ranges`, `merge_pdfs`, `save_pages`, `outline_entries`, `run_background`
   - `merge_pdfs`는 `writer.append`를 사용하므로 원본 북마크가 유지됩니다. `save_pages`는 `add_page`를 사용하므로 북마크를 직접 다시 만들며, `file_bookmarks`(파일 이름 북마크)와 `keep_outlines`(원본 북마크 유지) 인자로 제어합니다. 두 인자의 기본값은 False입니다.
-- `DragTree(ttk.Treeview)`: 마우스 드래그 정렬, Ctrl/Shift 선택, 자동 스크롤. 두 탭의 목록이 모두 이 위젯을 사용합니다.
+- `DragTree(ttk.Treeview)`: 마우스 드래그 정렬, Ctrl/Shift 선택, 자동 스크롤. `PageTab`의 쪽 목록이 이 위젯을 사용합니다.
   - 끄는 동안에는 행을 움직이지 않고, 놓을 위치에 빨간 가로 표시선(`_indicator`, 목록 위에 `place()`로 겹친 Frame)을 보여 줍니다. 마우스가 행의 위쪽 절반에 있으면 그 행 앞, 아래쪽 절반에 있으면 그 행 뒤가 놓을 위치입니다(`_drop_slot`).
   - 마우스를 놓으면 선택한 행들이 상대 순서를 유지한 채 그 위치에 모입니다(`_gather_selection`). "위치 지정 이동"(`move_selection_to`)도 같은 함수를 사용합니다.
   - 누른 행을 벗어나야 드래그로 간주합니다. 같은 행 안에서 놓으면 클릭으로 처리해서 그 행 하나만 선택합니다.
   - 행을 옮기면(드래그, `shift_selection`, `move_selection_to`) 옮긴 행이 보이도록 스크롤하고(`reveal_selection`), 선택 색을 0.4초 동안 주황색으로 바꿨다가 되돌립니다(`flash_selection`).
   - 선택 색은 위젯마다 따로 만든 스타일(`Drag숫자.Treeview`)의 `map`으로 지정합니다. 그래서 목록에 포커스가 없어도 선택 색이 흐려지지 않고, 강조색 변경이 다른 목록에 영향을 주지 않습니다.
 - `IS_MAC`: macOS 여부, `UNDO_LIMIT`: 실행 취소 최대 단계 수
-- `MergeTab`: 파일 단위 병합 (첫 번째 탭). 목록은 `DragTree`이며 열은 순서, 파일 이름, 쪽수, 폴더입니다. `self.files`가 행 ID를 (PDF 경로, 쪽수)에 대응시키고, 병합 순서는 화면의 행 순서를 따릅니다. 실행 취소 기능은 없습니다.
-- `PageTab`: 쪽 범위 불러오기, 쪽 단위 편집, 저장, 실행 취소 (두 번째 탭). 저장 옵션 체크박스 2개(원본 북마크 유지는 기본 켬, 파일 이름 북마크는 기본 끔)는 버튼 영역이 아니라 목록 아래 줄에 있습니다. 저장 경로가 원본과 같으면 저장하지 않습니다.
-  - 병합 탭(`MergeTab`)은 이 탭으로 통합한 뒤 삭제할 예정입니다(사용자 승인, 2026-10-30). 파일 단위 선택은 우클릭 메뉴 단계에서 추가합니다.
-- 렌더링판은 `MergeTab`을 그대로 사용하고, `PageTab`을 상속해서 썸네일과 미리보기를 덧붙입니다. 이를 위해 `PageTab`에는 다음 연결 지점이 있습니다.
+- `PageTab`: 쪽 범위 불러오기, 쪽 단위 편집, 저장(여러 PDF를 불러오면 병합), 실행 취소. 프로그램의 유일한 화면이며, 창에 탭 없이 바로 붙습니다. 저장 옵션 체크박스 2개(원본 북마크 유지는 기본 켬, 파일 이름 북마크는 기본 끔)는 버튼 영역이 아니라 목록 아래 줄에 있습니다. 저장 경로가 원본과 같으면 저장하지 않습니다.
+  - 예전의 병합 탭(`MergeTab`, 파일 단위 목록)은 이 화면으로 통합하고 삭제했습니다(사용자 승인, 2026-10-30). 파일 단위 선택("이 파일의 쪽 모두 선택")은 우클릭 메뉴 단계에서 추가합니다. `merge_pdfs`는 화면에서 쓰지 않지만 처리 로직 함수로 남겨 두었습니다.
+  - 단축키는 `winfo_ismapped()`로 화면에 보일 때만 처리합니다. 지금은 탭이 하나뿐이지만 나중에 탭이나 창이 늘어날 때를 위해 유지합니다.
+- 렌더링판은 `PageTab`을 상속해서 썸네일과 미리보기를 덧붙입니다. 이를 위해 `PageTab`에는 다음 연결 지점이 있습니다.
   - `_make_list_frame(body)`: 쪽 목록을 담을 프레임을 만들어 배치합니다. 렌더링판은 이 메서드를 바꿔서 나눔 창(목록 | 미리보기)을 만듭니다.
   - `self.tree_scroll`: 목록의 세로 스크롤바입니다. 렌더링판은 스크롤할 때 썸네일을 그리려고 `yscrollcommand`를 감쌉니다.
   - `update_status()`: 행 목록이 바뀌는 모든 경우(불러오기, 실행 취소 복원, 삭제, 비우기)에 호출됩니다. 렌더링판은 이 메서드를 바꿔서 썸네일과 미리보기를 갱신합니다. 행 목록을 바꾸는 새 기능을 추가하면 반드시 `update_status()`를 호출해야 합니다.
 - `DragTree`는 행을 클릭하면 그 행을 Treeview의 포커스 행(`focus()`)으로 기록하고, 포커스 행이 바뀌면 `<<RowFocus>>` 가상 이벤트를 보냅니다. 이미 선택된 행을 클릭하면 선택은 바뀌지 않으므로 `<<TreeviewSelect>>`만으로는 알 수 없기 때문입니다.
 
 `pdf_tool.py` (경량판 GUI):
-- `main()`만 들어 있습니다. 창을 만들고 공통 모듈의 `MergeTab`, `PageTab`을 탭으로 붙입니다.
+- `main()`만 들어 있습니다. 창을 만들고 공통 모듈의 `PageTab`을 붙입니다.
 - 공통 모듈의 이름들을 `from pdf_common import ...`로 가져와 `__all__`로 다시 내보냅니다. 기존 테스트가 `pdf_tool.PageTab`, `pdf_tool.UNDO_LIMIT`처럼 접근하므로 이 방식을 유지합니다.
 
 `pdf_render.py` (렌더링 모듈, pypdfium2 사용):
@@ -104,7 +104,6 @@ pip install -r requirements.txt -r requirements-dev.txt
 xvfb-run -a python tests/test_page_tab.py
 xvfb-run -a python tests/test_undo.py
 xvfb-run -a python tests/test_common.py
-xvfb-run -a python tests/test_merge_tab.py
 python tests/test_merge.py
 
 # 렌더링판 (pip install -r requirements-render.txt 필요)
@@ -118,10 +117,9 @@ xvfb-run -a python tests/test_image_export.py
 - 대화 상자 위치 테스트는 Windows의 제목 표시줄과 테두리 때문에 대화 상자 가운데가 본 창 가운데보다 오른쪽 아래로 밀리므로(배율 100%에서 9, 37픽셀) 80픽셀까지 허용합니다.
 - 대화 상자 테스트는 `root.after`로 `page._image_dialog`를 조작한 뒤 `ok()`/`cancel()`을 부릅니다. 검사가 실패해도 대화 상자를 닫아야 `wait_window`에서 멈추지 않습니다. 대화 상자에 키 이벤트를 보내려면 먼저 `focus_force()`가 필요합니다.
 - PDFium이 그린 그림의 크기는 `쪽 크기 × 배율`을 반올림한 값과 1픽셀 다를 수 있습니다(A4 150 DPI 높이 1754.2 → 1755).
-- `test_common.py`는 `pdf_tool.py` 없이 `pdf_common.py`만 가져와서 처리 로직, `run_background`, `DragTree`를 검사하고, 마지막에 `pdf_tool.py`가 공통 모듈의 객체(두 탭 클래스 포함)를 그대로 사용하는지 확인합니다.
+- `test_common.py`는 `pdf_tool.py` 없이 `pdf_common.py`만 가져와서 처리 로직, `run_background`, `DragTree`를 검사하고, 마지막에 `pdf_tool.py`가 공통 모듈의 객체(`PageTab` 포함)를 그대로 사용하는지 확인합니다.
 - `xvfb-run`이 없으면 `Xvfb :99 &` 실행 후 `DISPLAY=:99 python tests/test_undo.py`처럼 실행합니다.
 - 화면이 있는 환경에서는 `xvfb-run` 없이 그대로 실행해도 됩니다.
-- `test_merge_tab.py`는 병합 탭의 파일 추가, 표 표시, 드래그, 버튼 이동, 삭제, 병합 결과 순서를 검사합니다.
 - 드래그 테스트는 합성 이벤트로 수행합니다. `<ButtonPress-1>`, `<B1-Motion>`(state=0x100), `<ButtonRelease-1>` 순서이며, 좌표는 `tree.bbox(행)`로 구합니다.
 - 놓는 좌표가 행의 정확한 가운데(`y + h//2`)이면 아래쪽 절반으로 판정되어 그 행 뒤에 놓입니다. 행 앞에 놓으려면 행 위쪽 가까이(`y + 2`)를 사용합니다.
 - 자동 스크롤 테스트는 끄는 동안 순서가 바뀌지 않으므로, `tree.yview()`가 끝에 닿을 때까지 기다린 뒤 마우스를 놓습니다.

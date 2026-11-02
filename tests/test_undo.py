@@ -21,8 +21,9 @@ import pdf_tool as T
 messagebox.showinfo = messagebox.showwarning = messagebox.showerror = lambda *a, **k: None
 root = tk.Tk(); root.geometry("780x560")
 nb = T.ttk.Notebook(root); nb.pack(fill="both", expand=True)
-merge = T.MergeTab(nb); page = T.PageTab(nb)
-nb.add(merge, text="병합"); nb.add(page, text="추출"); nb.select(page)
+# 다른 탭이 보일 때 단축키를 무시하는지 검사하려고 빈 탭을 하나 둠 (10번)
+other = T.ttk.Frame(nb); page = T.PageTab(nb)
+nb.add(other, text="다른 탭"); nb.add(page, text="추출"); nb.select(page)
 root.update(); root.focus_force(); root.update()
 tree = page.tree
 
@@ -128,9 +129,9 @@ print("9. 단축키 OK (Ctrl+Z, Ctrl+Y, Ctrl+Shift+Z, 버튼 포커스)")
 
 # 10. 다른 탭이 보일 때는 동작하지 않음
 tree.selection_set(tree.get_children()[0]); page.shift(1)
-nb.select(merge); root.update()
-merge.tree.focus_force(); root.update()
-merge.tree.event_generate("<Control-z>"); root.update()
+nb.select(other); root.update()
+other.focus_force(); root.update()
+other.event_generate("<Control-z>"); root.update()
 assert order() == ["2","1","3","4","5"], order()
 nb.select(page); root.update()
 print("10. 다른 탭에서는 무시 OK")
