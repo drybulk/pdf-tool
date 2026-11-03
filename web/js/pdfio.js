@@ -1,8 +1,7 @@
-// PDF 읽기, 그리기, 저장. 렌더링은 pdf.js, 저장은 pdf-lib(@cantoo/pdf-lib)를 사용합니다.
+// PDF 읽기와 그리기(pdf.js). 저장(pdf-lib)은 pdfsave.js에 있습니다.
 // 화면 코드와 분리해 두어서 나중에 Chrome 확장에서도 그대로 쓸 수 있게 합니다.
 
 import * as pdfjsLib from "../vendor/pdfjs/pdf.min.mjs";
-import { PDFDocument } from "../vendor/pdf-lib/pdf-lib.esm.min.js";
 
 const vendor = (path) => new URL(`../vendor/${path}`, import.meta.url).href;
 
@@ -75,49 +74,6 @@ export function renderPage(doc, index, scale) {
   };
 }
 
-/** pdf-lib로 원본 PDF를 엽니다. 열람 비밀번호가 없는 암호화 PDF는 빈 비밀번호로 해제합니다. */
-async function openForCopy(bytes) {
-  let doc;
-  try {
-    doc = await PDFDocument.load(bytes);
-  } catch (e) {
-    if (!(e && /encrypted/i.test(e.message))) throw e;
-    doc = await PDFDocument.load(bytes, { password: "" });
-  }
-  if (doc.isEncrypted) throw new Error("암호화된 PDF를 해제하지 못했습니다.");
-  return doc;
-}
-
-/**
- * pages: [{ source, index }, ...] 순서대로 새 PDF를 만들어 바이트(Uint8Array)를 돌려줍니다.
- * source는 { name, bytes }입니다. 같은 쪽이 여러 번 들어 있어도 됩니다.
- * progress(n, total)는 원본 하나의 쪽을 모두 복사할 때마다 호출합니다.
- * 원본 북마크와 이름 붙은 대상(named destination)은 아직 옮기지 않습니다(다음 단계).
- */
-export async function savePages(pages, progress) {
-  const out = await PDFDocument.create();
-  const total = pages.length;
-  // 원본마다 필요한 쪽을 모아 copyPages를 한 번만 부름. copyPages는 한 번의 호출 안에서만 공유 자원
-  // (글꼴, 그림 등)을 한 번 복사하므로, 쪽마다 따로 부르면 같은 자원이 여러 번 들어가 파일이 커짐
-  const positions = new Map(); // source -> [결과에서의 위치, ...]
-  pages.forEach((p, pos) => {
-    if (!positions.has(p.source)) positions.set(p.source, []);
-    positions.get(p.source).push(pos);
-  });
-  const result = new Array(total);
-  let n = 0;
-  for (const [source, list] of positions) {
-    let doc;
-    try {
-      doc = await openForCopy(source.bytes);
-    } catch (e) {
-      throw new Error(`${source.name}: ${e && e.message ? e.message : e}`);
-    }
-    const copied = await out.copyPages(doc, list.map((pos) => pages[pos].index));
-    list.forEach((pos, k) => (result[pos] = copied[k]));
-    n += list.length;
-    if (progress) progress(n, total);
-  }
-  for (const page of result) out.addPage(page);
-  return out.save();
-}
+// 저장은 pdfsave.js에 있습니다(북마크와 이름 붙은 대상 처리 포함).
+export { savePages } from "./pdfsave.js";
+export const PDFJS_VERSION = pdfjsLib.version;
