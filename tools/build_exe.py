@@ -102,8 +102,9 @@ def tcl_tk_licenses():
     interp = tkinter.Tcl()
     found = []
     library = Path(interp.eval("set tcl_library"))
-    for folder in (library, library.parent):
-        path = folder / "license.terms"
+    tcl_candidates = [library / "license.terms", library.parent / "license.terms"]
+    tcl_candidates += sorted(library.parent.glob("tcl*/license.terms"))
+    for path in tcl_candidates:
         if path.is_file():
             found.append(("tcl", path))
             break
@@ -134,11 +135,26 @@ def copy_runtime_licenses(dest, allow_missing):
         shutil.copy2(path, dest / f"{kind}-license.terms")
         print(f"  {kind}: {path}")
     kinds = {kind for kind, _ in tcl}
-    # Windows용 Python의 LICENSE.txt에는 Tcl/Tk의 라이선스가 함께 들어 있습니다.
-    if kinds != {"tcl", "tk"} and "Tcl" not in py_text:
+    # Tcl과 Tk의 라이선스 문구는 "This software is copyrighted by the Regents of the University of
+    # California, Sun Microsystems, ..."로 시작합니다. Windows용 Python의 LICENSE.txt에 이 문구가 들어 있으면
+    # (Python에 함께 들어 있는 Tcl/Tk의 고지) 그것으로도 인정하고, 어느 항목 아래에 있는지 기록합니다.
+    marker = "copyrighted by the Regents of the University of California"
+    lines = py_text.splitlines()
+    headings = []
+    for i, line in enumerate(lines):
+        if marker in line:
+            before = [s.strip() for s in lines[max(0, i - 4):i] if s.strip()]
+            headings.append(before[-1] if before else "(앞 줄 없음)")
+    for heading in headings:
+        print(f"  Python LICENSE.txt의 Tcl/Tk 문구: 바로 앞 줄 \"{heading}\"")
+    if "tcl" not in kinds and not headings:
         if not allow_missing:
-            fail("Tcl/Tk의 라이선스 문서를 찾지 못했습니다.")
-        print("  경고: Tcl/Tk의 라이선스 문서를 찾지 못했습니다.")
+            fail("Tcl의 라이선스 문서를 찾지 못했습니다.")
+        print("  경고: Tcl의 라이선스 문서를 찾지 못했습니다.")
+    if "tk" not in kinds and not headings:
+        if not allow_missing:
+            fail("Tk의 라이선스 문서를 찾지 못했습니다.")
+        print("  경고: Tk의 라이선스 문서를 찾지 못했습니다.")
 
 
 def check_bundle(app):
