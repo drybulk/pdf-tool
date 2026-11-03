@@ -32,12 +32,15 @@ export function jpegInfo(bytes) {
     if (marker === 0xd8 || (marker >= 0xd0 && marker <= 0xd7) || marker === 0x01) { pos += 2; continue; }
     const len = view.getUint16(pos + 2);
     const body = pos + 4;
+    // 잘린 파일: 구간이 파일 끝을 넘으면 JPG로 읽지 않음 (그다음 브라우저로 읽다가 ImageError가 남)
+    if (len < 2 || pos + 2 + len > bytes.length) return null;
     if (marker === 0xe1 && len >= 8 && String.fromCharCode(...bytes.subarray(body, body + 4)) === "Exif") {
       const o = exifOrientation(view, body + 6, Math.min(bytes.length, pos + 2 + len));
       if (o) orientation = o;
     }
     // SOF0~SOF15 (DHT C4, JPG C8, DAC CC 제외)
     if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+      if (len < 8) return null;
       return {
         height: view.getUint16(body + 1),
         width: view.getUint16(body + 3),

@@ -182,7 +182,8 @@ async function main() {
         };
       }
       const errors = {};
-      for (const [name, bytes] of [["x.tiff", [73, 73, 42, 0, 1, 2, 3]], ["broken.png", [137, 80, 78, 71, 1, 2, 3]]]) {
+      for (const [name, bytes] of [["x.tiff", [73, 73, 42, 0, 1, 2, 3]], ["broken.png", [137, 80, 78, 71, 1, 2, 3]],
+        ["truncated.jpg", [255, 216, 255, 192, 0, 17]], ["truncated2.jpg", [255, 216, 255, 192, 0, 17, 8, 0, 100]]]) {
         try { await ii.imageToPdf(new Uint8Array(bytes), name); errors[name] = "오류 없음"; } catch (e) { errors[name] = `${e.constructor.name}: ${e.message}`; }
       }
       return {
@@ -215,6 +216,9 @@ async function main() {
     eq(conv.gray.color, "DeviceGray", "회색조 이미지는 회색조로");
     assert(/ImageError/.test(conv.errors["x.tiff"]) && /TIFF/.test(conv.errors["x.tiff"]), "TIFF 안내: " + conv.errors["x.tiff"]);
     assert(/ImageError/.test(conv.errors["broken.png"]), "손상된 PNG: " + conv.errors["broken.png"]);
+    // SOF 구간 안에서 잘린 JPG도 RangeError가 아니라 ImageError (불러오기의 파일별 오류 처리를 따르도록)
+    assert(/ImageError/.test(conv.errors["truncated.jpg"]), "잘린 JPG: " + conv.errors["truncated.jpg"]);
+    assert(/ImageError/.test(conv.errors["truncated2.jpg"]), "잘린 JPG 2: " + conv.errors["truncated2.jpg"]);
     console.log("2. 이미지 → PDF 변환 OK");
 
     // ---------- 3. PDF와 이미지를 섞어 불러오기 (쪽 범위는 PDF에만) ----------
