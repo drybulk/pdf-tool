@@ -10,6 +10,7 @@ PDF 도구 렌더링판: 경량판의 기능에 쪽 썸네일과 큰 미리보�
 "이미지로 저장"은 아래쪽 버튼, 파일 메뉴, 쪽 목록의 우클릭 메뉴에 있습니다.
 """
 
+import gc
 import math
 import os
 import queue
@@ -376,6 +377,10 @@ class RenderPageTab(PageTab):
         self.save_btn.state(["disabled"])
         self.image_btn.state(["disabled"])
         self.progress["value"] = 0
+        # 순환 참조로 남은 Tk 객체(닫은 대화 상자의 StringVar 등)를 메인 스레드에서 먼저 정리합니다.
+        # 그대로 두면 변환 스레드에서 가비지 컬렉션이 일어날 때 Variable.__del__이 그 스레드에서 Tk를 호출하고,
+        # mainloop 없이 update()로 화면을 갱신하는 동안에는 변수 하나마다 약 1초씩 기다린 뒤 RuntimeError가 납니다.
+        gc.collect()
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
         self.after(1, step)

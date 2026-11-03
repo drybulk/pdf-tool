@@ -318,5 +318,38 @@ assert max(gaps) < 0.5, max(gaps)                                  # 한 번에 
 assert any(0 < v < 100 for v in values) and values == sorted(values)  # 진행률이 중간값을 거쳐 늘어남
 print(f"11. 저장 중 화면 반응 OK (12쪽 300 DPI, 가장 긴 멈춤 {max(gaps) * 1000:.0f}ms)")
 
+# ---------- 12. 변환 스레드에서 가비지 컬렉션이 일어나도 Tk를 호출하지 않음 ----------
+# 닫은 대화 상자처럼 순환 참조로 남은 StringVar가 변환 스레드에서 정리되면 Variable.__del__이 그 스레드에서
+# Tk를 호출합니다. update()로만 화면을 갱신하는 동안에는 변수 하나마다 약 1초 기다린 뒤 RuntimeError가 나서,
+# 드물게 저장이 20초 안에 끝나지 않았습니다. export_images가 시작할 때 메인 스레드에서 먼저 정리하는지 확인합니다.
+import gc
+class Cyclic:
+    def __init__(self):
+        self.me = self
+        self.vars = [tk.StringVar(master=root, value="x") for _ in range(5)]
+OUT6 = os.path.join(TMP, "out6"); os.makedirs(OUT6)
+filedialog.askdirectory = lambda **k: OUT6
+page.clear_all(); load("1-2")
+page.ask_image_options = lambda n_sel, n_all: {"scope": "all", "format": "PNG", "dpi": 72, "quality": 90}
+unraisable = []
+old_hook, sys.unraisablehook = sys.unraisablehook, lambda u: unraisable.append(u.exc_value)
+real_png = R.encode_png
+def png_with_gc(*a, **k):
+    gc.collect()                                                   # 변환 스레드에서 가비지 컬렉션
+    return real_png(*a, **k)
+R.encode_png = png_with_gc
+gc.disable()                                                       # 시험 도중 메인 스레드에서 미리 정리되지 않게 함
+try:
+    Cyclic()
+    msgs.clear(); t0 = time.time(); page.save_images()
+    kind, _ = wait_done()
+    elapsed = time.time() - t0
+finally:
+    gc.enable(); R.encode_png = real_png; sys.unraisablehook = old_hook
+assert kind == "info" and len(os.listdir(OUT6)) == 2, (kind, os.listdir(OUT6))
+assert not unraisable, unraisable
+assert elapsed < 3, elapsed
+print(f"12. 변환 스레드의 가비지 컬렉션 OK ({elapsed:.2f}초)")
+
 print("ALL IMAGE EXPORT TESTS PASSED")
 root.destroy()
