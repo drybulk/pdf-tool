@@ -490,6 +490,11 @@ def build_window(root):
 
 
 def main():
+    import sys
+    if len(sys.argv) >= 2 and sys.argv[1] == "--selftest":
+        # 실행 파일의 구성 요소 검사 (pdf_selftest.py). 결과 파일 경로를 주지 않으면 화면에 출력
+        import pdf_selftest
+        sys.exit(pdf_selftest.run(sys.argv[2] if len(sys.argv) >= 3 else None))
     root = tk.Tk()
     build_window(root)
     root.mainloop()
