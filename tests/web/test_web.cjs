@@ -189,6 +189,13 @@ async function main() {
       // 영역 안에 들어가고, 가로나 세로 중 한쪽은 영역에 거의 맞음
       assert(pv.width <= area.width && pv.height <= area.height &&
         (pv.width > area.width - 40 || pv.height > area.height - 40), "미리보기가 영역에 맞음 " + JSON.stringify({ pv, area }));
+      // A를 보이는 중에 B를 고르고 곧바로 A로 돌아와도 미리보기는 A로 남아야 함
+      const shownId = await page.evaluate(() => Number(document.querySelector("#preview canvas").dataset.id));
+      await clickRow(3);
+      await clickRow(1);
+      await sleep(800);
+      const after = await page.evaluate(() => ({ shown: Number(document.querySelector("#preview canvas").dataset.id), focus: window.pdfTool.focus }));
+      eq(after, { shown: shownId, focus: shownId }, "빠르게 오간 뒤의 미리보기");
       console.log("5. 썸네일, 미리보기 OK");
     } else {
       console.log("5. 썸네일 OK (좁은 창이라 미리보기는 숨김)");
@@ -374,6 +381,22 @@ async function main() {
     await page.mouse.up();
     eq((await state()).order.slice(-1), ["M1"], "자동 스크롤 후 맨 끝에 놓기");
     console.log(`12. 자동 스크롤, 지연 로딩 OK (처음 화면에서 그린 썸네일 ${drawn}장)`);
+
+    // ---------- 12-1. 불러오는 동안 편집을 막음 (실행 취소 기록이 섞이지 않게) ----------
+    const during = await page.evaluate(async (arr) => {
+      const dt = new DataTransfer();
+      dt.items.add(new File([new Uint8Array(arr)], "A.pdf", { type: "application/pdf" }));
+      window.dispatchEvent(new DragEvent("drop", { dataTransfer: dt, cancelable: true }));
+      // drop 처리기는 첫 await 전에 busy를 켬
+      return { busy: window.pdfTool.busy, clear: document.getElementById("clear-btn").disabled };
+    }, made.A);
+    eq(during, { busy: true, clear: true }, "불러오는 동안 busy와 버튼 비활성");
+    await page.waitForFunction(() => !window.pdfTool.busy && window.pdfTool.order.length === 43);
+    assert(!(await page.isDisabled("#clear-btn")), "불러온 뒤 버튼 다시 사용 가능");
+    await page.locator("#list").focus();
+    await page.keyboard.press("Control+z");
+    eq((await state()).order.length, 40, "불러오기 실행 취소");
+    console.log("12-1. 불러오는 동안 편집 막기 OK");
 
     // ---------- 13. 화면 배치: 저장 버튼과 진행 막대가 창 안에 보임 ----------
     for (const [w, h] of [[size[0], size[1]], [1100, 600], [800, 500], [640, 460], [1400, 750]]) {

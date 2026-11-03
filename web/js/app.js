@@ -204,6 +204,10 @@ async function loadFiles(files) {
   const errors = [];
   let added = 0;
   let firstNew = null;
+  // 불러오는 동안 다른 편집과 불러오기를 막음. 막지 않으면 위의 before를 찍은 뒤에 일어난 편집이
+  // 이 불러오기의 실행 취소에 섞여서, 실행 취소가 관계없는 편집까지 되돌림
+  busy = true;
+  updateButtons();
   document.body.style.cursor = "progress";
   try {
     for (const file of files) {
@@ -233,6 +237,8 @@ async function loadFiles(files) {
     }
   } finally {
     document.body.style.cursor = "";
+    busy = false;
+    updateButtons();
   }
   if (added) pushUndo(before);
   refresh();
@@ -441,6 +447,7 @@ async function pumpThumbs() {
 let previewTimer = null;
 let previewTask = null;
 let previewShown = null;
+let previewReq = 0;        // 미리보기 요청 번호. 늦게 끝난 이전 요청의 결과를 버리는 데 씀
 
 function schedulePreview(delay = 0) {
   clearTimeout(previewTimer);
@@ -453,9 +460,12 @@ async function drawPreview() {
   const w = el.preview.clientWidth - 16;
   const h = el.preview.clientHeight - 16;
   const key = p ? `${thumbKey(p)}@${w}x${h}` : null;
-  if (key === previewShown) return;
+  // 이전 요청은 결과가 같든 다르든 먼저 무효로 함. A를 보이는 중에 B를 고르고 다시 A를 고르면
+  // 아래의 조기 반환으로 끝나는데, 이때 B의 그리기가 남아 있으면 끝난 뒤에 B로 바뀜
+  const req = ++previewReq;
   if (previewTask) previewTask.cancel();
   previewTask = null;
+  if (key === previewShown) return;
   if (!p || w < 20 || h < 20) {
     el.preview.replaceChildren();
     previewShown = key;
@@ -463,13 +473,14 @@ async function drawPreview() {
   }
   try {
     const page = await p.source.doc.getPage(p.index + 1);
+    if (req !== previewReq) return;
     const vp = page.getViewport({ scale: 1 });
     const fit = Math.min(w / vp.width, h / vp.height);
     const dpr = window.devicePixelRatio || 1;
     const task = renderPage(p.source.doc, p.index, fit * dpr);
     previewTask = task;
     const canvas = await task.promise;
-    if (previewTask !== task) return;
+    if (req !== previewReq) return;
     canvas.style.width = `${Math.round(vp.width * fit)}px`;
     canvas.style.height = `${Math.round(vp.height * fit)}px`;
     canvas.dataset.id = id;
