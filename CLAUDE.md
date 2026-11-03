@@ -104,6 +104,7 @@ PDF 병합, 쪽 범위 추출, 쪽 단위 순서 편집(마우스 드래그)을 
 - 비밀번호가 있는 PDF는 묻지 않고 실패로 안내합니다(데스크톱판과 같음).
 - pdf.js의 Liberation 글꼴(GPL-2.0)과 QuickJS는 넣지 않았습니다. 테스트에서 요청 실패나 콘솔 오류가 없는지 확인합니다.
 - 데스크톱판에 있고 웹판에 없는 것: TIFF 불러오기, 종료 메뉴.
+- Chrome 확장 (`extension/`, `tools/build_extension.py`): 툴바 아이콘을 누르면 `index.html`을 새 탭으로 엽니다(2026-11-03 사용자 동의). 권한을 요청하지 않습니다(자기 확장의 페이지를 새 탭으로 여는 데는 권한이 필요 없음). 빌드 스크립트는 `web/`(README 제외), `extension/`의 `background.js`와 `icons/`(assets/icon.png를 Pillow로 줄여 미리 만들어 둔 16/32/48/128픽셀), `LICENSE`, `THIRD_PARTY_NOTICES.md`를 `build/extension/`에 복사하고, `extension/manifest.json`의 버전을 `APP_VERSION`으로 바꿔 쓴 뒤 스토어용 zip을 만듭니다. `web/js/version.js`의 값이 다르거나 Chrome 버전 형식(점으로 나눈 정수 1~4개)이 아니면 멈춥니다. 보안 정책은 기본값과 같은 `script-src 'self' 'wasm-unsafe-eval'; object-src 'self'`를 명시했습니다. `wasm-unsafe-eval`이 없으면 pdf.js의 JPEG 2000 디코더(wasm)가 동작하지 않아 그런 그림이 흰색으로 그려집니다(확인함). 웹 스토어 등록 여부는 아직 정하지 않았습니다.
 - 게시: GitHub Pages는 저장소를 공개로 바꾼 뒤에 올립니다(비공개 저장소의 Pages는 유료). 그 전에는 `python -m http.server 8000 --directory web`으로 로컬에서 시험합니다. `file://`로 열면 모듈과 worker가 막혀서 동작하지 않습니다.
 
 `tools/bench_render.py`: 실제 PDF로 렌더링 속도를 재는 스크립트입니다. 썸네일, 미리보기, 200/300 DPI의 렌더링, PPM 변환, Tk 이미지 생성 시간을 쪽당 평균과 최대로 출력합니다. 쪽마다 썸네일 배율로 먼저 한 번 그려서 "처음 그리기" 행에 따로 기록하므로, 나머지 행은 모두 같은 조건(이미 한 번 그린 쪽)에서 비교할 수 있습니다. 최대값이 나온 쪽 번호, 쪽 불러오기(`doc[i]`) 평균, 저장용 배율의 PNG 만들기 시간(zlib 수준 1과 6)도 출력합니다. 측정 전에 첫 파일의 첫 쪽을 따로 한 번 그려서 프로그램 시작 직후의 비용을 제외합니다.
@@ -141,7 +142,7 @@ PDF 병합, 쪽 범위 추출, 쪽 단위 순서 편집(마우스 드래그)을 
 - 웹 버전은 순수 JavaScript(pdf.js + `@cantoo/pdf-lib`)로 만듭니다(2026-11-03, "실제 사용 시 가볍고 빠른게 최고"). 첫 버전은 핵심 기능부터 내놓고, GitHub Pages 게시는 저장소를 공개로 바꾼 뒤에 합니다. 나중에 Chrome 확장으로도 내놓기를 원합니다.
 
 아직 결정되지 않은 내용 (작업 전에 사용자에게 확인):
-- Chrome 확장의 형태(툴바 아이콘으로 웹판 화면을 새 탭에 여는 방식을 제안할 예정)와 Chrome 웹 스토어 등록 여부.
+- Chrome 웹 스토어 등록 여부. 확장의 형태(툴바 아이콘으로 웹판 화면을 새 탭에 엶)는 2026-11-03에 사용자가 동의했습니다.
 
 ## 테스트
 
@@ -163,12 +164,14 @@ xvfb-run -a python tests/test_selftest.py   # 실행 파일 자체 검사의 동
 # 웹판 (Node.js와 Playwright 필요. 컨테이너에는 설치되어 있음)
 node tests/web/test_web.cjs   # 창 크기를 인자로 줄 수 있음 (예: 1100x600)
 node tests/web/test_web_features.cjs   # 이미지 불러오기, 저장 옵션, 메뉴, 이미지로 저장. 창 크기 인자 가능
+node tests/web/test_extension.cjs   # Chrome 확장을 만들어 설치하고, 위 두 테스트를 확장의 페이지에서 다시 실행 (Python 필요)
 python tests/web/test_web_save.py   # 웹판 저장 결과를 데스크톱판 save_pages와 비교 (Python 패키지도 필요)
 ```
 
 - `test_web.cjs`는 Node의 http 모듈로 `web/`을 제공하고 Chromium으로 쪽 범위 해석, 순서 변경 함수, 불러오기, 범위 오류와 PDF가 아닌 파일 안내, 썸네일과 미리보기, 선택, 드래그(표시선, 여러 쪽 모으기, 같은 행 안의 움직임은 클릭), 실행 취소, 버튼, 저장(쪽 순서, 가로 쪽, 같은 쪽 두 번, 파일 이름), 비밀번호 PDF, 자동 스크롤, 지연 로딩, 여러 창 크기의 화면 배치, 콘솔 오류와 실패한 요청을 검사합니다. 시험용 PDF는 브라우저에서 pdf-lib로 만듭니다. GitHub Actions(`.github/workflows/web-test.yml`)가 Linux와 Windows에서 실행합니다.
 - `test_web_features.cjs`는 버전 일치, 이미지 → PDF 변환(JPG 그대로, Exif 방향 6/3/2, PNG 무손실, 투명은 흰색, 회색조, TIFF와 손상 파일 안내), PDF와 이미지 섞어 불러오기와 저장, 저장 옵션(파일 이름 북마크), 메뉴 막대(항목, 사용 가능 여부, 작업 중, 키보드, 도움말), 우클릭 메뉴(선택 규칙, 이 파일의 쪽 모두 선택, 창 안 위치), 이미지로 저장(대화 상자 기본값, 품질 검사, 취소, zip과 단일 파일, 파일 이름, pHYs와 JFIF 해상도, 크기), 여러 창 크기의 배치를 검사합니다. 시험용 JPG의 Exif는 테스트가 APP1 조각을 직접 끼워 넣어 만듭니다.
 - `test_web_save.py`는 `tests/test_merge.py`의 5~12번 사례를 `save_cases.cjs`로 웹판에서 저장해 같은 기대값으로 검사하고, 같은 사례 16개를 데스크톱판 `save_pages`로도 저장해서 글자, 북마크, 이름 붙은 대상, 링크 이름을 비교합니다. 13번은 링크 대상 쪽의 내용이 딸려 오지 않는지, 14번은 옛 방식(/Dests 사전)의 이름 붙은 대상을 검사합니다.
+- `test_extension.cjs`는 확장 파일(manifest의 버전, 권한 없음, 보안 정책, 아이콘 크기, web/ 파일이 빠짐없이 같은 내용으로 들어 있는지, 인라인 스크립트 없음, 스토어용 zip의 파일 목록), 툴바 아이콘 동작(백그라운드의 `openApp()`을 직접 부름), 보안 정책 안에서 pdf.js 작업 스레드와 wasm 디코더(JPEG 2000 그림)가 동작하는지, eval이 막히는지를 검사한 뒤 `test_web.cjs`와 `test_web_features.cjs`를 환경 변수 `PDF_TOOL_EXTENSION=build/extension`으로 다시 실행합니다. 이 환경 변수가 있으면 `serve.cjs`의 `launch()`가 웹 서버 대신 확장을 설치한 persistent context를 띄웁니다. 확장은 창 없이 실행하려면 `channel: "chromium"`(새 headless)이 필요합니다. 기본 headless 셸에서는 확장의 서비스 워커가 뜨지 않았습니다.
 - 로캘이 비어 있는 Linux 컨테이너에서는 Chromium이 한국어 다운로드 파일 이름을 `download`로 바꾸므로, 테스트가 `LANG=C.UTF-8`로 브라우저를 띄웁니다.
 - 드래그 테스트는 두 행이 모두 목록 안에 보이도록 스크롤한 뒤 끕니다. 목록 밖에서 놓으면 자동 스크롤이 일어나 다른 자리에 놓입니다.
 
@@ -221,7 +224,7 @@ python tests/web/test_web_save.py   # 웹판 저장 결과를 데스크톱판 sa
 4. 메뉴 막대와 우클릭 메뉴 (양쪽 판 공통, 중간 작업, 완료). "보기" 메뉴(썸네일 크기, 미리보기 표시 여부)는 만들지 않고 5단계로 넘어갔습니다(2026-11-02 사용자 결정).
 5. 공개 배포 준비: 저장소 라이선스(MIT), 제3자 라이브러리 고지(`THIRD_PARTY_NOTICES.md`), 문서 정리 (완료, PR #12). 저장소 공개 전환은 실행 파일 준비가 끝난 뒤에 하기로 했습니다(2026-11-03 사용자 결정).
 6. GitHub Releases에 실행 파일 배포 (`THIRD_PARTY_NOTICES.md`의 "실행 파일로 배포할 때 지켜야 할 사항"을 따름, 완료). 방식: PyInstaller, 렌더링판만, 폴더를 zip으로, GitHub Actions에서 빌드, 첫 버전 `v0.1.0`(2026-11-03 사용자 승인, PyInstaller 사용 포함). `v0.1.0`은 2026-11-03에 게시했습니다(PR #13). 저장소 공개 전환은 관리자가 결정합니다.
-7. 웹 버전: 순수 JavaScript(A안). 첫 버전은 핵심 기능(불러오기, 썸네일, 드래그, 저장, PR #15). 두 번째 PR에서 북마크와 이름 붙은 대상 유지, 이미지 불러오기와 저장, 메뉴를 추가. Pages 게시는 저장소 공개 후. 그다음 Chrome 확장 (진행 중)
+7. 웹 버전: 순수 JavaScript(A안). 첫 버전은 핵심 기능(불러오기, 썸네일, 드래그, 저장, PR #15). 두 번째 PR(#16)에서 북마크와 이름 붙은 대상 유지, 이미지 불러오기와 저장, 메뉴를 추가. 세 번째 PR에서 Chrome 확장(내 컴퓨터에 설치, 스토어용 zip도 만듦). Pages 게시는 저장소 공개 후 (진행 중)
 
 ## 참고 문서
 

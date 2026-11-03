@@ -31,6 +31,25 @@ python -m http.server 8000 --directory web
 
 브라우저에서 `http://localhost:8000` 을 엽니다. 다 쓴 뒤에는 명령 창에서 Ctrl+C로 서버를 끕니다.
 
+## Chrome 확장으로 설치하기
+
+웹판을 Chrome 확장으로 묶어서 설치할 수 있습니다. 설치하면 툴바의 아이콘을 눌러 새 탭에서 바로 열 수 있고, 위의 웹 서버를 켤 필요가 없습니다. 인터넷 연결 없이도 동작합니다. 확장은 아무 권한도 요청하지 않습니다.
+
+1. 저장소 폴더에서 확장을 만듭니다. `build/extension` 폴더가 생깁니다.
+
+```
+python tools/build_extension.py
+```
+
+2. Chrome 주소창에 `chrome://extensions` 를 입력합니다.
+3. 오른쪽 위의 "개발자 모드"를 켭니다.
+4. "압축해제된 확장 프로그램을 로드합니다"를 누르고 `build/extension` 폴더를 고릅니다.
+5. 툴바의 퍼즐 조각 아이콘을 눌러 "PDF 도구"를 고정하면 툴바에서 바로 누를 수 있습니다.
+
+새 버전을 받은 뒤에는 1번을 다시 실행하고 `chrome://extensions` 에서 "PDF 도구"의 새로고침 단추를 누릅니다. Edge(`edge://extensions`)에서도 같은 방법으로 설치할 수 있을 것으로 보지만 확인하지 않았습니다.
+
+`tools/build_extension.py`는 Chrome 웹 스토어에 올릴 때 쓰는 zip(`build/pdf-tool-extension-<버전>.zip`)도 함께 만듭니다. 확장의 파일은 `extension/`(manifest, 백그라운드 스크립트, 아이콘)에 있고, 화면은 `web/`의 파일을 그대로 씁니다.
+
 ## 구성
 
 - `index.html`, `style.css`: 화면
@@ -51,6 +70,12 @@ npm install --no-save playwright
 npx playwright install chromium
 node tests/web/test_web.cjs
 node tests/web/test_web_features.cjs
+```
+
+Chrome 확장 테스트는 확장을 만들어 설치한 Chromium에서 위의 두 테스트를 다시 실행합니다(Python 필요).
+
+```
+node tests/web/test_extension.cjs
 ```
 
 저장 결과를 데스크톱판과 비교하는 테스트는 Python도 필요합니다(`pip install -r requirements.txt -r requirements-dev.txt`).

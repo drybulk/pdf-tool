@@ -61,6 +61,8 @@ FreeType 문장의 연도는 FreeType 라이선스의 안내에 따라 배포하
 
 웹판 테스트에만 쓰는 Playwright(Apache-2.0)는 배포하지 않으므로 표에 넣지 않았습니다.
 
+Chrome 확장(`tools/build_extension.py`로 만듦)은 웹판의 파일을 그대로 담으므로 위의 라이브러리와 라이선스 문서가 같은 위치(`vendor/`)에 함께 들어갑니다. 저장소의 `LICENSE`와 이 문서도 확장의 맨 위 폴더에 넣습니다. 확장에만 쓰는 외부 라이브러리는 없습니다.
+
 ## 프로그램 아이콘
 
 `assets/icon.ico`, `assets/icon.png`, `assets/icon_source.png`는 저장소 관리자가 제공한 그림으로 만들었으며, 이 저장소의 다른 파일과 같이 MIT 라이선스를 따릅니다.
