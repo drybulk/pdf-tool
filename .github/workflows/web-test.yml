@@ -24,5 +24,16 @@ jobs:
         run: |
           npm install --no-save --no-package-lock playwright@1.63.0
           npx playwright install --with-deps chromium
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Python 패키지 설치 (저장 결과를 데스크톱판과 비교하는 테스트용)
+        run: python -m pip install -r requirements.txt -r requirements-dev.txt
       - name: 웹판 테스트
         run: node tests/web/test_web.cjs
+      - name: 웹판 기능 테스트 (이미지, 메뉴, 이미지로 저장)
+        run: node tests/web/test_web_features.cjs
+      - name: 웹판 저장 결과를 데스크톱판과 비교
+        env:
+          PYTHONUTF8: "1"
+        run: python tests/web/test_web_save.py

@@ -90,13 +90,20 @@ PDF 병합, 쪽 범위 추출, 쪽 단위 순서 편집(마우스 드래그)을 
 웹판 (`web/`, 7단계):
 - 구조는 A안(순수 JavaScript)입니다(2026-11-03 사용자 결정, "실제 사용 시 가볍고 빠른게 최고"). Pyodide로 Python 로직을 재사용하는 B안은 첫 로딩이 약 7~9MB라서 택하지 않았습니다. 비교 근거는 저장소 밖의 프로젝트 공유 폴더에 있는 `web/web_design_proposal.md`에 있습니다.
 - 서버 없이 정적 파일만 씁니다. 파일은 브라우저 밖으로 나가지 않습니다. Chrome 확장(Manifest V3)으로 옮길 수 있도록 인라인 스크립트, 외부 CDN, `eval`을 쓰지 않고 라이브러리 파일을 `web/vendor/`에 둡니다(pdf.js는 `isEvalSupported: false`).
-- `js/ranges.js`(쪽 범위, `parse_page_ranges`와 같은 규칙과 오류), `js/order.js`(모으기, 위로/아래로, 위치 지정. `DragTree`와 같은 규칙), `js/pdfio.js`(pdf.js로 열기와 그리기, pdf-lib로 저장), `js/app.js`(화면). 처리 함수는 화면과 분리해서 Chrome 확장에서 그대로 쓸 수 있게 합니다.
+- `js/ranges.js`(쪽 범위, `parse_page_ranges`와 같은 규칙과 오류), `js/order.js`(모으기, 위로/아래로, 위치 지정. `DragTree`와 같은 규칙), `js/pdfio.js`(pdf.js로 열기와 그리기), `js/pdfsave.js`(pdf-lib로 저장, 북마크와 이름 붙은 대상), `js/imageimport.js`(이미지 → PDF), `js/imageexport.js`(PNG/JPG, 파일 이름, zip), `js/version.js`(`APP_VERSION`, 데스크톱판 값과 같아야 하며 `test_web_features.cjs`가 확인), `js/app.js`(화면). 처리 함수는 화면과 분리해서 Chrome 확장에서 그대로 쓸 수 있게 합니다.
 - 화면은 렌더링판과 같은 `[쪽 목록 | 미리보기] [버튼]` 배치이고, 오른쪽 버튼 8개도 데스크톱판과 같습니다. 760픽셀보다 좁으면 미리보기를 숨기고 버튼을 아래로 옮깁니다. 행 높이는 CSS 변수 `--row-h`(110px)로 고정하고, 놓을 위치는 이 값으로 계산합니다.
 - 썸네일은 IntersectionObserver로 보이는 행(위아래 220px 포함)만 그리고 300장까지 보관합니다. 미리보기는 포커스 행(없으면 선택한 첫 행)을 그립니다.
-- 저장: 원본마다 `copyPages`를 한 번만 부릅니다(한 번의 호출 안에서만 글꼴 같은 공유 자원을 한 번 복사하기 때문). 같은 쪽을 두 번 넣어도 서로 다른 쪽 객체가 됩니다(pypdf로 확인). 결과는 `<a download>`로 내려받습니다.
+- 저장(`pdfsave.js`의 `savePages(pages, {keepOutlines, fileBookmarks}, progress)`): 데스크톱판 `save_pages`, `copy_named_destinations`, `outline_entries`와 같은 알고리즘입니다. 원본마다 복사기(`PDFObjectCopier`) 하나로 글꼴 같은 공유 자원을 한 번만 복사합니다. 같은 쪽을 두 번 넣으면 두 번째는 첫 복사본의 얕은 복제(주석은 따로 복제하고 /P를 새 쪽으로)이며 서로 다른 쪽 객체가 됩니다.
+  - pdf-lib의 `copyPages`는 링크의 /Dest 배열이나 주석의 /P를 따라가서 다른 쪽 전체(내용 포함)를 고아 객체로 복사합니다(PR #15의 첫 웹판에 있던 문제). 그래서 복사하기 전에 복사기의 `traversedObjects`(TypeScript private이지만 실행 중에는 접근 가능)에 원본 쪽 참조 → 미리 할당한 출력 쪽 참조(출력에 없는 쪽이면 PDFNull)를 넣어 둡니다. pdf-lib 판을 올릴 때 이 내부 이름이 바뀌었는지 `test_web_save.py`의 13번으로 확인합니다.
+  - 이름 붙은 대상의 이름은 바이트열("1바이트 = 1글자" 문자열)로 다루고 PDFHexString으로 씁니다. 뷰어가 이름을 바이트로 비교하기 때문입니다. 겹치는 이름은 `이름~2`로 바꾸고 그 파일 쪽의 링크(/Dest, /A GoTo /D)도 바꿉니다.
+  - 결과는 `<a download>`로 내려받습니다.
+- 이미지 불러오기(`imageimport.js`): 데스크톱판 `image_to_pdf`와 같은 규칙(A4 너비, JPG는 DCTDecode 그대로, Exif 방향 3/6/8은 /Rotate)입니다. 그 밖의 이미지는 `createImageBitmap(..., {imageOrientation: "from-image"})`로 흰 바탕에 그려 회색조인지 판단하고 `CompressionStream("deflate")`로 FlateDecode합니다. PDF는 `buildImagePdf`(`_build_image_pdf`와 같은 구조)가 직접 씁니다. Chrome은 TIFF를 읽지 못하므로 안내만 합니다. 16비트 이미지는 브라우저가 8비트로 줄입니다(데스크톱판의 "256으로 나눔"과 결과가 다를 수 있음, 확인하지 않음).
+- 이미지로 저장(`saveImages`): 대화 상자(`<dialog>`, `novalidate`로 품질 검사를 직접 함)의 선택지와 기본값은 렌더링판과 같습니다. pdf.js로 `DPI/72` 배율로 그리고, PNG에는 pHYs 청크, JPG에는 JFIF 밀도를 기록합니다. 1장이면 그 파일을, 2장 이상이면 압축하지 않은 zip(UTF-8 이름 표시)을 내려받습니다. zip 이름은 원본이 하나면 `원본이름_images.zip`, 여럿이면 "파일 이름" 칸의 이름 + `_images.zip`입니다. 오류가 나면 멈추고 아무것도 내려받지 않습니다.
+- 메뉴 막대와 우클릭 메뉴: `menuItems()`, `contextMenuItems()`가 `[이름, 동작, 단축키, 조건]` 목록을 돌려주고, 조건은 데스크톱판 `_menu_condition`과 같습니다. 메뉴를 열 때마다 항목을 다시 만들어 사용 가능 여부를 정합니다. "종료"는 없습니다. 우클릭 선택 규칙도 데스크톱판과 같습니다. 대화 상자가 열려 있으면 본 화면의 단축키를 처리하지 않습니다.
+- 실행 취소/다시 실행 버튼은 위쪽 도구 막대에서 빼고 편집 메뉴와 단축키로 옮겼습니다. 760픽셀보다 좁거나 560픽셀보다 낮은 창에서는 안내 문구(`#app > .hint`)를 숨깁니다(범위 예시는 입력 칸의 흐린 글자로 보임).
 - 비밀번호가 있는 PDF는 묻지 않고 실패로 안내합니다(데스크톱판과 같음).
 - pdf.js의 Liberation 글꼴(GPL-2.0)과 QuickJS는 넣지 않았습니다. 테스트에서 요청 실패나 콘솔 오류가 없는지 확인합니다.
-- 아직 없는 것: 북마크 유지, 이름 붙은 대상 위치 유지(다음 단계에서 Python 테스트의 사례를 JS 테스트로 옮겨 같은 동작을 검증), 이미지 불러오기, 이미지로 저장, 메뉴 막대와 우클릭 메뉴.
+- 데스크톱판에 있고 웹판에 없는 것: TIFF 불러오기, 종료 메뉴.
 - 게시: GitHub Pages는 저장소를 공개로 바꾼 뒤에 올립니다(비공개 저장소의 Pages는 유료). 그 전에는 `python -m http.server 8000 --directory web`으로 로컬에서 시험합니다. `file://`로 열면 모듈과 worker가 막혀서 동작하지 않습니다.
 
 `tools/bench_render.py`: 실제 PDF로 렌더링 속도를 재는 스크립트입니다. 썸네일, 미리보기, 200/300 DPI의 렌더링, PPM 변환, Tk 이미지 생성 시간을 쪽당 평균과 최대로 출력합니다. 쪽마다 썸네일 배율로 먼저 한 번 그려서 "처음 그리기" 행에 따로 기록하므로, 나머지 행은 모두 같은 조건(이미 한 번 그린 쪽)에서 비교할 수 있습니다. 최대값이 나온 쪽 번호, 쪽 불러오기(`doc[i]`) 평균, 저장용 배율의 PNG 만들기 시간(zlib 수준 1과 6)도 출력합니다. 측정 전에 첫 파일의 첫 쪽을 따로 한 번 그려서 프로그램 시작 직후의 비용을 제외합니다.
@@ -155,9 +162,13 @@ xvfb-run -a python tests/test_selftest.py   # 실행 파일 자체 검사의 동
 
 # 웹판 (Node.js와 Playwright 필요. 컨테이너에는 설치되어 있음)
 node tests/web/test_web.cjs   # 창 크기를 인자로 줄 수 있음 (예: 1100x600)
+node tests/web/test_web_features.cjs   # 이미지 불러오기, 저장 옵션, 메뉴, 이미지로 저장. 창 크기 인자 가능
+python tests/web/test_web_save.py   # 웹판 저장 결과를 데스크톱판 save_pages와 비교 (Python 패키지도 필요)
 ```
 
 - `test_web.cjs`는 Node의 http 모듈로 `web/`을 제공하고 Chromium으로 쪽 범위 해석, 순서 변경 함수, 불러오기, 범위 오류와 PDF가 아닌 파일 안내, 썸네일과 미리보기, 선택, 드래그(표시선, 여러 쪽 모으기, 같은 행 안의 움직임은 클릭), 실행 취소, 버튼, 저장(쪽 순서, 가로 쪽, 같은 쪽 두 번, 파일 이름), 비밀번호 PDF, 자동 스크롤, 지연 로딩, 여러 창 크기의 화면 배치, 콘솔 오류와 실패한 요청을 검사합니다. 시험용 PDF는 브라우저에서 pdf-lib로 만듭니다. GitHub Actions(`.github/workflows/web-test.yml`)가 Linux와 Windows에서 실행합니다.
+- `test_web_features.cjs`는 버전 일치, 이미지 → PDF 변환(JPG 그대로, Exif 방향 6/3/2, PNG 무손실, 투명은 흰색, 회색조, TIFF와 손상 파일 안내), PDF와 이미지 섞어 불러오기와 저장, 저장 옵션(파일 이름 북마크), 메뉴 막대(항목, 사용 가능 여부, 작업 중, 키보드, 도움말), 우클릭 메뉴(선택 규칙, 이 파일의 쪽 모두 선택, 창 안 위치), 이미지로 저장(대화 상자 기본값, 품질 검사, 취소, zip과 단일 파일, 파일 이름, pHYs와 JFIF 해상도, 크기), 여러 창 크기의 배치를 검사합니다. 시험용 JPG의 Exif는 테스트가 APP1 조각을 직접 끼워 넣어 만듭니다.
+- `test_web_save.py`는 `tests/test_merge.py`의 5~12번 사례를 `save_cases.cjs`로 웹판에서 저장해 같은 기대값으로 검사하고, 같은 사례 16개를 데스크톱판 `save_pages`로도 저장해서 글자, 북마크, 이름 붙은 대상, 링크 이름을 비교합니다. 13번은 링크 대상 쪽의 내용이 딸려 오지 않는지, 14번은 옛 방식(/Dests 사전)의 이름 붙은 대상을 검사합니다.
 - 로캘이 비어 있는 Linux 컨테이너에서는 Chromium이 한국어 다운로드 파일 이름을 `download`로 바꾸므로, 테스트가 `LANG=C.UTF-8`로 브라우저를 띄웁니다.
 - 드래그 테스트는 두 행이 모두 목록 안에 보이도록 스크롤한 뒤 끕니다. 목록 밖에서 놓으면 자동 스크롤이 일어나 다른 자리에 놓입니다.
 
@@ -210,7 +221,7 @@ node tests/web/test_web.cjs   # 창 크기를 인자로 줄 수 있음 (예: 110
 4. 메뉴 막대와 우클릭 메뉴 (양쪽 판 공통, 중간 작업, 완료). "보기" 메뉴(썸네일 크기, 미리보기 표시 여부)는 만들지 않고 5단계로 넘어갔습니다(2026-11-02 사용자 결정).
 5. 공개 배포 준비: 저장소 라이선스(MIT), 제3자 라이브러리 고지(`THIRD_PARTY_NOTICES.md`), 문서 정리 (완료, PR #12). 저장소 공개 전환은 실행 파일 준비가 끝난 뒤에 하기로 했습니다(2026-11-03 사용자 결정).
 6. GitHub Releases에 실행 파일 배포 (`THIRD_PARTY_NOTICES.md`의 "실행 파일로 배포할 때 지켜야 할 사항"을 따름, 완료). 방식: PyInstaller, 렌더링판만, 폴더를 zip으로, GitHub Actions에서 빌드, 첫 버전 `v0.1.0`(2026-11-03 사용자 승인, PyInstaller 사용 포함). `v0.1.0`은 2026-11-03에 게시했습니다(PR #13). 저장소 공개 전환은 관리자가 결정합니다.
-7. 웹 버전: 순수 JavaScript(A안), 첫 버전은 핵심 기능(불러오기, 썸네일, 드래그, 저장)부터. 북마크와 이름 붙은 대상 유지, 이미지 불러오기와 저장, 메뉴는 이어서 추가. Pages 게시는 저장소 공개 후. 그다음 Chrome 확장 (진행 중)
+7. 웹 버전: 순수 JavaScript(A안). 첫 버전은 핵심 기능(불러오기, 썸네일, 드래그, 저장, PR #15). 두 번째 PR에서 북마크와 이름 붙은 대상 유지, 이미지 불러오기와 저장, 메뉴를 추가. Pages 게시는 저장소 공개 후. 그다음 Chrome 확장 (진행 중)
 
 ## 참고 문서
 
