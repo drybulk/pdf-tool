@@ -37,6 +37,24 @@ HAS_PILLOW = Image is not None
 IS_MAC = sys.platform == "darwin"
 UNDO_LIMIT = 100  # 실행 취소로 되돌릴 수 있는 최대 단계 수
 APP_VERSION = "0.1.0"  # 프로그램 버전. "프로그램 정보"에 표시하며, 릴리스 태그는 "v" + 이 값이어야 함 (tools/build_exe.py가 확인)
+
+
+def resource_path(*parts):
+    """프로그램과 함께 배포하는 파일(assets 등)의 경로. 실행 파일(PyInstaller)에서는 풀린 폴더(sys._MEIPASS) 기준입니다."""
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, *parts)
+
+
+def set_window_icon(root):
+    """창과 이후에 여는 대화 상자의 아이콘을 assets/icon.png로 정합니다. 파일이 없거나 읽지 못하면 기본 아이콘을 둡니다.
+    성공하면 PhotoImage를 돌려줍니다(창이 참조를 갖고 있어야 그림이 지워지지 않으므로 root에도 붙여 둠)."""
+    try:
+        image = tk.PhotoImage(master=root, file=resource_path("assets", "icon.png"))
+        root.iconphoto(True, image)
+    except (tk.TclError, OSError):
+        return None
+    root._app_icon = image
+    return image
 MOD = "Cmd" if IS_MAC else "Ctrl"  # 메뉴에 표시하는 단축키 수정자 키 이름
 
 # 쪽으로 불러올 수 있는 이미지 파일의 확장자 (소문자)

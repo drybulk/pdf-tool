@@ -21,6 +21,7 @@ from pdf_common import (
     UNDO_LIMIT,
     DragTree,
     PageTab,
+    set_window_icon,
     merge_pdfs,
     open_pdf,
     outline_entries,
@@ -41,6 +42,7 @@ def build_window(root):
     root.title("PDF 도구: 병합 / 페이지 추출")
     root.geometry("780x560")
     root.minsize(640, 460)
+    set_window_icon(root)
 
     page = PageTab(root)
     page.make_menubar(root)

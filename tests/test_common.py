@@ -196,5 +196,19 @@ for name in ("IS_MAC", "UNDO_LIMIT", "DragTree", "PageTab",
     assert getattr(T, name) is getattr(C, name), name
 print("5. pdf_tool의 공통 이름 연결 OK")
 
+# ---------- 6. 창 아이콘: assets/icon.png를 읽어 창에 붙이고, 파일이 없으면 기본 아이콘을 둠 ----------
+icon = C.set_window_icon(root)
+assert icon is not None and (icon.width(), icon.height()) == (256, 256) and root._app_icon is icon
+assert os.path.isfile(C.resource_path("assets", "icon.ico"))
+original_resource_path = C.resource_path
+C.resource_path = lambda *parts: os.path.join(tempfile.gettempdir(), "없는_폴더", *parts)
+try:
+    top = tk.Toplevel(root)
+    assert C.set_window_icon(top) is None and not hasattr(top, "_app_icon")
+    top.destroy()
+finally:
+    C.resource_path = original_resource_path
+print("6. 창 아이콘 OK")
+
 print("ALL COMMON TESTS PASSED")
 root.destroy()

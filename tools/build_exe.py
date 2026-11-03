@@ -59,6 +59,9 @@ def run_pyinstaller():
         "--specpath", str(BUILD),
         # 테스트용 라이브러리가 설치되어 있어도 넣지 않습니다.
         "--exclude-module", "reportlab",
+        # exe 파일의 아이콘과, 창 아이콘으로 쓰는 PNG (pdf_common.set_window_icon)
+        "--icon", str(ROOT / "assets" / "icon.ico"),
+        "--add-data", f"{ROOT / 'assets' / 'icon.png'}{os.pathsep}assets",
     ]
     # "도움말 > 프로그램 정보"가 importlib.metadata로 버전을 읽으므로 메타데이터를 넣습니다.
     for name in DISTRIBUTIONS:
@@ -158,6 +161,8 @@ def check_bundle(app):
     for name in DISTRIBUTIONS:
         if not any(internal.glob(f"{name}-*.dist-info")):
             fail(f"{name}의 메타데이터가 실행 폴더에 들어가지 않았습니다.")
+    if not (internal / "assets" / "icon.png").is_file():
+        fail("창 아이콘(assets/icon.png)이 실행 폴더에 들어가지 않았습니다.")
     if not any(internal.rglob("init.tcl")):
         fail("Tcl 데이터가 실행 폴더에 들어가지 않았습니다.")
     print(f"  확인: {exe.name}, {pdfium[0].name}, 메타데이터 {len(DISTRIBUTIONS)}개, Tcl 데이터")

@@ -18,7 +18,7 @@ import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from pdf_common import PageTab
+from pdf_common import PageTab, set_window_icon
 from pdf_render import (
     DPI_CHOICES, HAS_PILLOW, THUMB_BOX, LRUCache, PdfiumDocs,
     encode_jpg, encode_png, fit_scale, image_file_names, thumb_scale,
@@ -482,6 +482,7 @@ def build_window(root):
     w, h = fit_window_size(*WINDOW_SIZE, root.winfo_screenwidth(), root.winfo_screenheight())
     root.geometry(f"{w}x{h}")
     root.minsize(min(900, w), min(560, h))
+    set_window_icon(root)
 
     page = RenderPageTab(root)
     page.make_menubar(root)

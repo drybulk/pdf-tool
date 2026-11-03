@@ -107,7 +107,11 @@ def run(result_path):
             try:
                 page = build_window(root)
                 root.update()
-                return f"Tk {root.tk.call('info', 'patchlevel')}, 메뉴 {page.winfo_toplevel()['menu'] != ''}"
+                icon = getattr(root, "_app_icon", None)
+                if icon is None:
+                    raise ValueError("창 아이콘(assets/icon.png)을 불러오지 못했습니다.")
+                return (f"Tk {root.tk.call('info', 'patchlevel')}, 메뉴 {page.winfo_toplevel()['menu'] != ''}, "
+                        f"아이콘 {icon.width()}x{icon.height()}")
             finally:
                 root.destroy()
 
