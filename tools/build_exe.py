@@ -35,6 +35,8 @@ ENTRY = ROOT / "pdf_tool_render.py"
 DISTRIBUTIONS = ("pypdf", "pillow", "pypdfium2")
 # 실행 폴더에 그대로 복사하는 저장소 문서
 DOCS = ("LICENSE", "THIRD_PARTY_NOTICES.md", "README.md")
+# Tcl의 라이선스 문서. https://raw.githubusercontent.com/tcltk/tcl/core-8-6-15/license.terms 를 그대로 복사함
+TCL_LICENSE = ROOT / "tools" / "licenses" / "tcl-license.terms"
 
 
 def fail(message):
@@ -124,10 +126,8 @@ def copy_runtime_licenses(dest, allow_missing):
         if not allow_missing:
             fail("Python의 LICENSE.txt를 찾지 못했습니다.")
         print("  경고: Python의 LICENSE.txt를 찾지 못했습니다.")
-        py_text = ""
     else:
         shutil.copy2(py, dest / "Python-LICENSE.txt")
-        py_text = py.read_text(encoding="utf-8", errors="replace")
         print(f"  Python {platform.python_version()}: {py}")
 
     tcl = tcl_tk_licenses()
@@ -135,25 +135,14 @@ def copy_runtime_licenses(dest, allow_missing):
         shutil.copy2(path, dest / f"{kind}-license.terms")
         print(f"  {kind}: {path}")
     kinds = {kind for kind, _ in tcl}
-    # Tcl과 Tk의 라이선스 문구는 "This software is copyrighted by the Regents of the University of
-    # California, Sun Microsystems, ..."로 시작합니다. Windows용 Python의 LICENSE.txt에 이 문구가 들어 있으면
-    # (Python에 함께 들어 있는 Tcl/Tk의 고지) 그것으로도 인정하고, 어느 항목 아래에 있는지 기록합니다.
-    marker = "copyrighted by the Regents of the University of California"
-    lines = py_text.splitlines()
-    headings = []
-    for i, line in enumerate(lines):
-        if marker in line:
-            before = [s.strip() for s in lines[max(0, i - 4):i] if s.strip()]
-            headings.append(before[-1] if before else "(앞 줄 없음)")
-    for heading in headings:
-        print(f"  Python LICENSE.txt의 Tcl/Tk 문구: 바로 앞 줄 \"{heading}\"")
-    if "tcl" not in kinds and not headings:
+    if "tcl" not in kinds:
+        # Windows용 Python(python.org 설치본)의 tcl 폴더에는 Tk의 license.terms만 있고 Tcl의 것은 없습니다
+        # (GitHub Actions의 Python 3.12.10에서 확인). Tcl 8.6.15 소스의 license.terms를 저장소에 두고 씁니다.
+        shutil.copy2(TCL_LICENSE, dest / "tcl-license.terms")
+        print(f"  tcl: {TCL_LICENSE.relative_to(ROOT)} (Tcl 8.6.15 소스의 license.terms)")
+    if "tk" not in kinds:
         if not allow_missing:
-            fail("Tcl의 라이선스 문서를 찾지 못했습니다.")
-        print("  경고: Tcl의 라이선스 문서를 찾지 못했습니다.")
-    if "tk" not in kinds and not headings:
-        if not allow_missing:
-            fail("Tk의 라이선스 문서를 찾지 못했습니다.")
+            fail("Tk의 라이선스 문서(license.terms)를 찾지 못했습니다.")
         print("  경고: Tk의 라이선스 문서를 찾지 못했습니다.")
 
 

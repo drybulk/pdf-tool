@@ -32,7 +32,7 @@ pip으로 설치하는 배포본(wheel)에는 라이브러리 본체 외에 C �
    - pypdf: `pypdf-*.dist-info/licenses/LICENSE`
    - Pillow: `pillow-*.dist-info/licenses/LICENSE` (Pillow에 들어 있는 모든 구성 요소의 고지문이 이 파일 하나에 들어 있습니다)
    - pypdfium2: `pypdfium2-*.dist-info/licenses/` 폴더 전체 (`LICENSES/`와 운영체제별 `BUILD_LICENSES/`)
-   - 실행 파일에 함께 묶이는 Python 자체(PSF 라이선스)와 Tcl/Tk의 라이선스 문서
+   - 실행 파일에 함께 묶이는 Python 자체(PSF 라이선스)와 Tcl/Tk의 라이선스 문서. Windows용 Python에는 Tcl의 `license.terms`가 없어서, Tcl 8.6.15 소스의 문서를 `tools/licenses/tcl-license.terms`에 두고 씁니다.
 2. 배포 문서에 아래 문장을 적습니다. libjpeg-turbo(IJG 라이선스)와 FreeType(FTL)의 라이선스가 요구하는 문장이며, Pillow와 PDFium이 모두 이 두 라이브러리를 포함합니다.
 
 > This software is based in part on the work of the Independent JPEG Group.
