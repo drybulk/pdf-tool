@@ -5,9 +5,8 @@
 
 const fs = require("fs");
 const path = require("path");
-const { chromium } = require("playwright");
 
-const { serve } = require("./serve.cjs");
+const { launch } = require("./serve.cjs");
 
 function assert(cond, msg) {
   if (!cond) throw new Error("검사 실패: " + msg);
@@ -20,11 +19,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
   const size = (process.argv[2] || "1200x750").split("x").map(Number);
-  const server = await serve();
-  const base = `http://127.0.0.1:${server.address().port}/`;
-  // 로캘이 비어 있는 Linux 컨테이너에서는 Chromium이 한국어 다운로드 파일 이름을 "download"로 바꿈
-  const browser = await chromium.launch({ env: { ...process.env, LANG: process.env.LANG || "C.UTF-8" } });
-  const context = await browser.newContext({ viewport: { width: size[0], height: size[1] }, acceptDownloads: true });
+  // PDF_TOOL_EXTENSION을 주면 Chrome 확장으로 설치한 웹판에서 실행함 (tests/web/test_extension.cjs가 사용)
+  const env = await launch(size);
+  const { context, base } = env;
   const page = await context.newPage();
   const problems = [];
   page.on("pageerror", (e) => problems.push("페이지 오류: " + e.message));
@@ -35,7 +32,7 @@ async function main() {
   page.on("dialog", (d) => (dialogAnswer === null ? d.dismiss() : d.accept(dialogAnswer)));
 
   try {
-    await page.goto(base);
+    await page.goto(base + "index.html");
     await page.waitForSelector("html[data-ready='1']");
 
     // ---------- 1. 쪽 범위 해석 (tests/test_merge.py, test_page_tab.py와 같은 사례) ----------
@@ -403,8 +400,7 @@ async function main() {
     eq(problems, [], "콘솔 오류와 실패한 요청");
     console.log("모든 웹판 테스트 통과");
   } finally {
-    await browser.close();
-    server.close();
+    await env.close();
   }
 }
 
