@@ -108,6 +108,22 @@ python tools/build_exe.py --version v0.1.0
 
 `build/dist/pdf-tool/` 폴더와 `build/pdf-tool-v0.1.0-windows-x64.zip`이 만들어집니다. 폴더에는 실행 파일과 함께 `LICENSE`, `THIRD_PARTY_NOTICES.md`, `README.md`, `licenses/`(외부 라이브러리, Python, Tcl/Tk의 라이선스 문서)가 들어갑니다. 마지막에 만든 실행 파일을 `pdf-tool.exe --selftest 결과.txt`로 실행해서 PDFium, Pillow, Tcl/Tk가 모두 들어갔는지 확인합니다.
 
+받은 실행 파일을 직접 검사하려면 `pdf-tool` 폴더에서 아래 명령을 실행합니다. 창 없는 프로그램이라 끝날 때까지 기다리게 해야 결과 파일이 만들어진 뒤에 읽을 수 있습니다.
+
+PowerShell:
+
+```
+Start-Process -Wait .\pdf-tool.exe -ArgumentList '--selftest','selftest.txt'
+Get-Content .\selftest.txt
+```
+
+명령 프롬프트(cmd):
+
+```
+start /wait pdf-tool.exe --selftest selftest.txt
+type selftest.txt
+```
+
 GitHub에서는 `.github/workflows/build-exe.yml`이 풀 리퀘스트마다 Windows 실행 파일을 만들어 자체 검사를 하고, `v`로 시작하는 태그를 올리면 zip을 붙인 Release 초안을 만듭니다.
 
 렌더링 속도는 `python tools/bench_render.py 파일.pdf [--pages 100]`으로 측정할 수 있습니다. 썸네일, 미리보기, 200/300 DPI 렌더링의 쪽당 시간을 출력합니다. 각 쪽을 처음 그리는 시간을 따로 보여 주고, 시간이 가장 길었던 쪽 번호와 저장용 PNG를 만드는 시간도 함께 출력합니다.
