@@ -2,7 +2,7 @@
 
 이 프로그램 자체의 라이선스는 MIT입니다(`LICENSE`). 아래 라이브러리에는 각자의 라이선스가 적용됩니다.
 
-이 프로그램은 아래의 외부 라이브러리를 사용합니다. 이 저장소에는 라이브러리의 코드가 들어 있지 않으며, 사용자가 `pip install`로 직접 설치합니다. 각 라이브러리의 저작권과 라이선스는 그 라이브러리의 저작자에게 있습니다.
+데스크톱판은 아래의 외부 라이브러리를 사용합니다. 저장소에는 이 라이브러리들의 코드가 들어 있지 않으며, 사용자가 `pip install`로 직접 설치합니다. 각 라이브러리의 저작권과 라이선스는 그 라이브러리의 저작자에게 있습니다.
 
 | 라이브러리 | 사용하는 판 | 라이선스 | 저작권 표기 (라이선스 파일 기준) | 출처 |
 |---|---|---|---|---|
@@ -40,6 +40,26 @@ pip으로 설치하는 배포본(wheel)에는 라이브러리 본체 외에 C �
 > Portions of this software are copyright © 2026 The FreeType Project (www.freetype.org). All rights reserved.
 
 FreeType 문장의 연도는 FreeType 라이선스의 안내에 따라 배포하는 해로 적습니다.
+
+## 웹판 (`web/`)
+
+웹판은 데스크톱판과 달리 라이브러리 파일을 저장소의 `web/vendor/`에 함께 둡니다. 웹 페이지로 올리면 이 파일들을 함께 배포하게 되므로, 각 라이브러리의 라이선스 문서를 같은 폴더에 두었습니다.
+
+| 라이브러리 | 판 | 라이선스 | 저작권 표기 | 출처 | 라이선스 문서 |
+|---|---|---|---|---|---|
+| pdf.js (`pdfjs-dist`) | 6.5.438 | Apache-2.0 | Mozilla Foundation | https://github.com/mozilla/pdf.js | `web/vendor/pdfjs/LICENSE` |
+| pdf-lib (`@cantoo/pdf-lib`, 원래 pdf-lib의 관리되는 갈래) | 2.11.1 | MIT | Copyright (c) 2019 Andrew Dillon | https://github.com/cantoo-scribe/pdf-lib | `web/vendor/pdf-lib/LICENSE.md` |
+
+함께 들어 있는 구성 요소:
+
+- pdf.js의 데이터 파일
+  - `cmaps/`: Adobe의 CMap 자료(BSD 형식의 허용형 라이선스, Copyright 1990-2009 Adobe Systems Incorporated). 문서: `web/vendor/pdfjs/cmaps/LICENSE`
+  - `standard_fonts/`: Foxit 글꼴(PDFium, BSD-3-Clause). 문서: `standard_fonts/LICENSE_FOXIT`. pdf.js 배포본에 있는 Liberation 글꼴은 GPL-2.0(글꼴 예외 조항 포함)이라서 넣지 않았습니다.
+  - `wasm/`: JBIG2 디코더(PDFium, BSD-3-Clause, 그리고 pdf.js 부분은 Apache-2.0), OpenJPEG 디코더(BSD-2-Clause), qcms 색 관리(MIT). 문서: `wasm/LICENSE_*`. pdf.js의 문서 스크립트 실행용 QuickJS는 쓰지 않으므로 넣지 않았습니다.
+  - `iccs/`: ICC 색 프로파일(CC0-1.0). 문서: `iccs/LICENSE`
+- pdf-lib의 `pdf-lib.esm.min.js`에 함께 묶여 있는 라이브러리: fflate(MIT), culori(MIT), node-html-better-parser(MIT), tslib(0BSD). 각 라이브러리의 버전은 npm 레지스트리의 의존성 범위 기준이며, 묶인 정확한 판은 확인하지 않았습니다.
+
+웹판 테스트에만 쓰는 Playwright(Apache-2.0)는 배포하지 않으므로 표에 넣지 않았습니다.
 
 ## 프로그램 아이콘
 

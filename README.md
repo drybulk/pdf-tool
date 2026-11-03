@@ -10,6 +10,8 @@ PDF 병합, 쪽 범위 추출, 쪽 단위 순서 편집(마우스 드래그)을 
 
 GUI는 파이썬에 기본으로 포함된 `tkinter`를 사용합니다.
 
+브라우저에서 쓰는 웹판(`web/`)도 만들고 있습니다. 설치 없이 브라우저 안에서만 처리하며, 지금은 불러오기, 썸네일, 끌어서 순서 바꾸기, 저장 같은 핵심 기능만 있습니다. 실행 방법과 아직 없는 기능은 `web/README.md`에 있습니다.
+
 ## 실행 파일 (Windows)
 
 Python을 설치하지 않고 쓰려면 GitHub의 Releases에서 `pdf-tool-<버전>-windows-x64.zip`을 내려받아 압축을 풀고 `pdf-tool.exe`를 실행합니다. 실행 파일은 렌더링판입니다. 코드 서명 인증서가 없어서 처음 실행할 때 "Windows의 PC 보호" 창이 나올 수 있으며, "추가 정보"를 누른 뒤 "실행"을 누르면 됩니다.
@@ -99,6 +101,12 @@ xvfb-run -a python tests/test_selftest.py      # 실행 파일 자체 검사(--s
 
 Linux에서는 `python3-tk`와 `xvfb`가 필요합니다.
 
+웹판 테스트는 Node.js와 Playwright로 실행합니다(`web/README.md` 참고).
+
+```
+node tests/web/test_web.cjs
+```
+
 ## 실행 파일 만들기
 
 ```
@@ -139,3 +147,4 @@ GitHub에서는 `.github/workflows/build-exe.yml`이 풀 리퀘스트마다 Wind
 - `CLAUDE.md`: 작업 원칙과 프로젝트 맥락 (Claude Code가 세션 시작 때 읽는 파일)
 - `docs/extension_plan.md`: 미리보기, 이미지 저장, 메뉴 구조의 확장 계획
 - `THIRD_PARTY_NOTICES.md`: 사용하는 외부 라이브러리의 라이선스와 저작권 고지
+- `web/README.md`: 웹판의 기능, 실행 방법, 구성
