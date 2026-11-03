@@ -26,7 +26,7 @@ pip으로 설치하는 배포본(wheel)에는 라이브러리 본체 외에 C �
 
 ## 실행 파일로 배포할 때 지켜야 할 사항
 
-라이브러리를 실행 파일(exe) 안에 묶어서 배포하면, 라이브러리의 코드를 함께 배포하는 것이 됩니다. 이때는 다음을 지켜야 합니다.
+라이브러리를 실행 파일(exe) 안에 묶어서 배포하면, 라이브러리의 코드를 함께 배포하는 것이 됩니다. 이때는 다음을 지켜야 합니다. `tools/build_exe.py`는 1번의 문서를 실행 폴더의 `licenses/`에 복사하고, 문서를 찾지 못하면 빌드를 실패로 끝냅니다. 2번의 문장은 이 문서와 Release 설명(`.github/release_notes.md`)에 들어 있습니다.
 
 1. 실행 파일과 함께 아래 라이선스 문서를 넣습니다.
    - pypdf: `pypdf-*.dist-info/licenses/LICENSE`
@@ -40,3 +40,7 @@ pip으로 설치하는 배포본(wheel)에는 라이브러리 본체 외에 C �
 > Portions of this software are copyright © 2026 The FreeType Project (www.freetype.org). All rights reserved.
 
 FreeType 문장의 연도는 FreeType 라이선스의 안내에 따라 배포하는 해로 적습니다.
+
+## 빌드에만 쓰는 도구
+
+실행 파일은 PyInstaller(GPL-2.0 이상, 만든 실행 파일은 어떤 라이선스로든 배포할 수 있다는 예외 조항 포함)로 만듭니다. PyInstaller는 프로그램이 사용하는 라이브러리가 아니므로 위의 표에 넣지 않았습니다.

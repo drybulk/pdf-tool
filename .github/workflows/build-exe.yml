@@ -1,0 +1,52 @@
+# 렌더링판 실행 파일(Windows)을 만듭니다.
+# - 풀 리퀘스트, 수동 실행: 빌드와 자체 검사만 하고, zip은 실행 결과의 Artifacts에 올립니다.
+# - v로 시작하는 태그(예: v0.1.0)를 올리면: 빌드한 zip을 붙인 Release 초안(draft)을 만듭니다.
+#   초안은 저장소 관리자만 볼 수 있으며, 내용을 확인한 뒤 GitHub에서 직접 게시합니다.
+name: 실행 파일 빌드
+
+on:
+  pull_request:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"  # 빌드 스크립트의 한국어 출력이 Windows 기본 인코딩에서 깨지지 않도록 함
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 라이브러리 설치
+        run: python -m pip install -r requirements-render.txt -r requirements-build.txt
+      - name: 실행 파일 만들기와 자체 검사
+        run: python tools/build_exe.py --version "${{ github.ref_type == 'tag' && github.ref_name || 'dev' }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pdf-tool-windows
+          path: build/*.zip
+          if-no-files-found: error
+
+  draft-release:
+    if: github.ref_type == 'tag'
+    needs: build-windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: pdf-tool-windows
+          path: dist
+      - name: Release 초안 만들기
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" dist/*.zip --draft --title "PDF 도구 $TAG" --notes-file .github/release_notes.md

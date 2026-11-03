@@ -79,6 +79,12 @@ PDF 병합, 쪽 범위 추출, 쪽 단위 순서 편집(마우스 드래그)을 
 - `fit_window_size`: 기본 창 크기 1200×750을 화면 안에 들어오도록 줄입니다(가로 여백 40, 세로 여백 80픽셀).
 - 렌더링은 모두 메인 스레드에서 합니다(PDFium의 스레드 제한).
 
+실행 파일 (6단계):
+- `tools/build_exe.py`: PyInstaller로 렌더링판을 폴더 형태(onedir, 창만 있고 콘솔 없음)로 묶고, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `README.md`, `licenses/`(각 라이브러리의 `dist-info/licenses`, Python의 `LICENSE.txt`, Tcl/Tk의 `license.terms`)를 넣은 뒤 zip(`build/pdf-tool-<버전>-<운영체제>-<cpu>.zip`)을 만듭니다. 라이선스 문서를 찾지 못하면 실패로 끝납니다(Linux에서 시험할 때는 `--allow-missing-runtime-licenses`). Windows용 Python은 `LICENSE.txt`에 Tcl/Tk 라이선스가 들어 있으므로 그것으로도 인정합니다(Windows 빌드에서 확인 필요). `--copy-metadata`로 라이브러리 메타데이터를 넣어야 "프로그램 정보"의 버전이 나옵니다.
+- `pdf_selftest.py`: `pdf-tool.exe --selftest 결과파일`로 실행하는 자체 검사입니다(창 없는 실행 파일은 콘솔 출력이 없으므로 파일에 씀, 종료 코드 0/1). 라이브러리 버전, PDF/이미지 불러오기, 썸네일 렌더링, PNG/JPG 변환, PDF 저장, 창 만들기를 확인합니다. `build_exe.py`가 빌드 끝에 실행합니다. `pdf_tool_render.main()`이 `--selftest` 인자를 처리합니다.
+- `.github/workflows/build-exe.yml`: 풀 리퀘스트와 수동 실행에서는 Windows(windows-latest, Python 3.12)에서 빌드와 자체 검사만 하고 zip을 Artifacts에 올립니다. `v*` 태그를 올리면 zip을 붙인 Release 초안을 만듭니다(설명은 `.github/release_notes.md`). 한국어 출력 때문에 `PYTHONUTF8=1`을 설정합니다.
+- 빌드 도구는 `requirements-build.txt`에 버전을 고정합니다(PyInstaller 6.22.3, hooks-contrib 2026.9). Linux 컨테이너에서 빌드한 실행 파일은 약 59MB(zip 약 29MB)였고 자체 검사를 통과했습니다.
+
 `tools/bench_render.py`: 실제 PDF로 렌더링 속도를 재는 스크립트입니다. 썸네일, 미리보기, 200/300 DPI의 렌더링, PPM 변환, Tk 이미지 생성 시간을 쪽당 평균과 최대로 출력합니다. 쪽마다 썸네일 배율로 먼저 한 번 그려서 "처음 그리기" 행에 따로 기록하므로, 나머지 행은 모두 같은 조건(이미 한 번 그린 쪽)에서 비교할 수 있습니다. 최대값이 나온 쪽 번호, 쪽 불러오기(`doc[i]`) 평균, 저장용 배율의 PNG 만들기 시간(zlib 수준 1과 6)도 출력합니다. 측정 전에 첫 파일의 첫 쪽을 따로 한 번 그려서 프로그램 시작 직후의 비용을 제외합니다.
 
 구현 규칙:
@@ -129,6 +135,7 @@ xvfb-run -a python tests/test_image_import.py   # Pillow 필요. pypdfium2가 �
 # 렌더링판 (pip install -r requirements-render.txt 필요)
 xvfb-run -a python tests/test_render.py
 xvfb-run -a python tests/test_image_export.py
+xvfb-run -a python tests/test_selftest.py   # 실행 파일 자체 검사의 동작
 ```
 
 - `test_menu.py`는 메뉴 구성, 항목 사용 가능 여부(빈 목록, 저장 중), 우클릭 선택 규칙, "이 파일의 쪽 모두 선택", 메뉴로 이동/삭제/실행 취소/저장, Ctrl+O/Ctrl+S(다른 창에서는 무시), 도움말, 종료, 메뉴 막대를 붙인 창의 화면 배치(경량판 640×460~1100×600, 렌더링판 900×560~1400×750)를 검사합니다. pypdfium2가 있으면 렌더링판의 "이미지로 저장..." 항목과 미리보기도 검사합니다.
@@ -178,8 +185,8 @@ xvfb-run -a python tests/test_image_export.py
 2. 렌더링판: 큰 미리보기와 썸네일 목록. 지연 로딩과 캐시 (큰 작업, 완료)
 3. 이미지 저장: 쪽 범위, DPI(72, 150, 200, 300), 형식(PNG, JPG), 파일명 규칙 (중간 작업, 완료)
 4. 메뉴 막대와 우클릭 메뉴 (양쪽 판 공통, 중간 작업, 완료). "보기" 메뉴(썸네일 크기, 미리보기 표시 여부)는 만들지 않고 5단계로 넘어갔습니다(2026-11-02 사용자 결정).
-5. 공개 배포 준비: 저장소 라이선스, 제3자 라이브러리 고지(`THIRD_PARTY_NOTICES.md`), 문서 정리 (진행 중)
-6. GitHub Releases에 실행 파일 배포 (`THIRD_PARTY_NOTICES.md`의 "실행 파일로 배포할 때 지켜야 할 사항"을 따름)
+5. 공개 배포 준비: 저장소 라이선스(MIT), 제3자 라이브러리 고지(`THIRD_PARTY_NOTICES.md`), 문서 정리 (완료, PR #12). 저장소 공개 전환은 실행 파일 준비가 끝난 뒤에 하기로 했습니다(2026-11-03 사용자 결정).
+6. GitHub Releases에 실행 파일 배포 (`THIRD_PARTY_NOTICES.md`의 "실행 파일로 배포할 때 지켜야 할 사항"을 따름, 진행 중). 방식: PyInstaller, 렌더링판만, 폴더를 zip으로, GitHub Actions에서 빌드, 첫 버전 `v0.1.0`(2026-11-03 추천안으로 진행. 빌드 도구 PyInstaller를 새로 쓰는 것은 사용자 확인을 기다리는 중).
 7. 웹 버전 (구조는 아직 정하지 않음)
 
 ## 참고 문서
