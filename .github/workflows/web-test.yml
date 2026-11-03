@@ -1,0 +1,28 @@
+# 웹판(web/)의 브라우저 테스트를 Linux와 Windows의 Chromium에서 실행합니다.
+name: 웹판 테스트
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  web-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Playwright 설치
+        run: |
+          npm install --no-save --no-package-lock playwright@1.63.0
+          npx playwright install --with-deps chromium
+      - name: 웹판 테스트
+        run: node tests/web/test_web.cjs
