@@ -118,7 +118,8 @@ def run(result_path):
     lines.append("결과: " + ("통과" if ok else "실패"))
     text = "\n".join(lines) + "\n"
     if result_path:
-        with open(result_path, "w", encoding="utf-8") as f:
+        # BOM을 붙여야 Windows PowerShell 5의 Get-Content가 한국어를 깨뜨리지 않고 읽음 (기본이 CP949)
+        with open(result_path, "w", encoding="utf-8-sig") as f:
             f.write(text)
     elif sys.stdout is not None:
         sys.stdout.write(text)

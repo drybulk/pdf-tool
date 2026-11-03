@@ -21,10 +21,11 @@ TMP = tempfile.mkdtemp(prefix="pdf_tool_test_")
 # ---------- 1. 모든 검사 통과, 결과 파일 ----------
 result = os.path.join(TMP, "result.txt")
 assert pdf_selftest.run(result) == 0
-text = open(result, encoding="utf-8").read()
+text = open(result, encoding="utf-8-sig").read()
 assert "FAIL" not in text and text.rstrip().endswith("결과: 통과"), text
 for name in ("라이브러리 버전", "PDF/이미지 불러오기", "렌더링과 이미지 변환", "PDF 저장", "창 만들기"):
     assert f"OK   {name}" in text, (name, text)
+assert open(result, "rb").read().startswith(b"\xef\xbb\xbf")  # PowerShell 5용 BOM
 print("1. 모든 검사 통과 OK")
 
 # ---------- 2. 검사 하나가 실패하면 종료 코드 1과 오류 내용 ----------
@@ -35,7 +36,7 @@ try:
     assert pdf_selftest.run(result) == 1
 finally:
     pdf_render.encode_jpg = original
-text = open(result, encoding="utf-8").read()
+text = open(result, encoding="utf-8-sig").read()
 assert "FAIL 렌더링과 이미지 변환" in text and "PNG/JPG 변환 결과가 올바르지 않습니다" in text, text
 assert "OK   창 만들기" in text and text.rstrip().endswith("결과: 실패"), text
 print("2. 실패 보고 OK")
@@ -44,7 +45,7 @@ print("2. 실패 보고 OK")
 result2 = os.path.join(TMP, "result2.txt")
 proc = subprocess.run([sys.executable, os.path.join(ROOT, "pdf_tool_render.py"), "--selftest", result2], timeout=120)
 assert proc.returncode == 0, proc.returncode
-assert open(result2, encoding="utf-8").read().rstrip().endswith("결과: 통과")
+assert open(result2, encoding="utf-8-sig").read().rstrip().endswith("결과: 통과")
 print("3. --selftest 인자 OK")
 
 print("ALL SELFTEST TESTS PASSED")

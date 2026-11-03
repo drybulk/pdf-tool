@@ -173,7 +173,7 @@ def run_selftest(app):
         code = subprocess.run([str(exe), "--selftest", str(result)], timeout=120).returncode
     except subprocess.TimeoutExpired:
         fail("자체 검사가 120초 안에 끝나지 않았습니다.")
-    text = result.read_text(encoding="utf-8") if result.exists() else "(결과 파일 없음)\n"
+    text = result.read_text(encoding="utf-8-sig") if result.exists() else "(결과 파일 없음)\n"
     print("자체 검사 결과:\n" + text, end="")
     if code != 0:
         fail(f"자체 검사에 실패했습니다 (종료 코드 {code}).")
