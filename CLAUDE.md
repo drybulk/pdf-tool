@@ -81,7 +81,7 @@ PDF 병합, 쪽 범위 추출, 쪽 단위 순서 편집(마우스 드래그)을 
 
 실행 파일 (6단계):
 - `tools/build_exe.py`: PyInstaller로 렌더링판을 폴더 형태(onedir, 창만 있고 콘솔 없음)로 묶고, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `README.md`, `licenses/`(각 라이브러리의 `dist-info/licenses`, Python의 `LICENSE.txt`, Tcl/Tk의 `license.terms`)를 넣은 뒤 zip(`build/pdf-tool-<버전>-<운영체제>-<cpu>.zip`)을 만듭니다. 라이선스 문서를 찾지 못하면 실패로 끝납니다(Linux에서 시험할 때는 `--allow-missing-runtime-licenses`). Windows용 Python(python.org, GitHub Actions의 3.12.10)의 `tcl` 폴더에는 Tk의 `license.terms`만 있고 Tcl의 것은 없으며, Python의 `LICENSE.txt`에도 Tcl/Tk 라이선스 문구가 없었습니다. 그래서 Tcl 8.6.15 소스의 `license.terms`를 `tools/licenses/tcl-license.terms`에 두고 씁니다. `--copy-metadata`로 라이브러리 메타데이터를 넣어야 "프로그램 정보"의 버전이 나옵니다.
-- 아이콘: `assets/icon.ico`(exe 아이콘, 16~256픽셀 7가지 크기), `assets/icon.png`(256픽셀, 창 아이콘), `assets/icon_source.png`(84픽셀 원본 조각). 사용자가 준 ChatGPT 펫 스프라이트 시트(1536×2288, 칸 192×208)의 첫 칸에서 (78, 44)~(140, 128)을 잘라 꼬리 부분을 지우고 아래 8픽셀을 흐리게 한 뒤 정사각형으로 맞췄습니다. 원본이 작아서 256픽셀은 약간 흐립니다. `pdf_common.set_window_icon(root)`이 양쪽 판의 `build_window`에서 창 아이콘을 정하고(`resource_path`는 실행 파일에서 `sys._MEIPASS` 기준), 파일이 없으면 기본 아이콘을 둡니다. `build_exe.py`가 `--icon`과 `--add-data`로 넣습니다.
+- 아이콘: `assets/icon.ico`(exe 아이콘, 16~256픽셀 7가지 크기), `assets/icon.png`(256픽셀, 창 아이콘), `assets/icon_source.png`(84픽셀 원본 조각). 사용자가 준 스프라이트 시트(1536×2288, 칸 192×208)의 첫 칸에서 (78, 44)~(140, 128)을 잘라 꼬리 부분을 지우고 아래 8픽셀을 흐리게 한 뒤 정사각형으로 맞췄습니다. 원본이 작아서 256픽셀은 약간 흐립니다. `pdf_common.set_window_icon(root)`이 양쪽 판의 `build_window`에서 창 아이콘을 정하고(`resource_path`는 실행 파일에서 `sys._MEIPASS` 기준), 파일이 없으면 기본 아이콘을 둡니다. `build_exe.py`가 `--icon`과 `--add-data`로 넣습니다.
 - `pdf_selftest.py`: `pdf-tool.exe --selftest 결과파일`로 실행하는 자체 검사입니다(창 없는 실행 파일은 콘솔 출력이 없으므로 파일에 씀, 종료 코드 0/1). 라이브러리 버전, PDF/이미지 불러오기, 썸네일 렌더링, PNG/JPG 변환, PDF 저장, 창 만들기를 확인합니다. `build_exe.py`가 빌드 끝에 실행합니다. 결과 파일은 BOM이 있는 UTF-8로 씁니다(Windows PowerShell 5의 `Get-Content`가 BOM 없는 UTF-8을 CP949로 읽어 한국어가 깨졌음, 2026-11-03 사용자 확인). `pdf_tool_render.main()`이 `--selftest` 인자를 처리합니다.
 - `.github/workflows/build-exe.yml`: 풀 리퀘스트와 수동 실행에서는 Windows(windows-latest, Python 3.12)에서 빌드와 자체 검사만 하고 zip을 Artifacts에 올립니다. `v*` 태그를 올리면 zip을 붙인 Release 초안을 만듭니다(설명은 `.github/release_notes.md`). 한국어 출력 때문에 `PYTHONUTF8=1`을 설정합니다.
 - 빌드 도구는 `requirements-build.txt`에 버전을 고정합니다(PyInstaller 6.22.3, hooks-contrib 2026.9). Linux 컨테이너에서 빌드한 실행 파일은 약 59MB(zip 약 29MB)였고 자체 검사를 통과했습니다.
@@ -112,7 +112,7 @@ PDF 병합, 쪽 범위 추출, 쪽 단위 순서 편집(마우스 드래그)을 
 - 배포 계획: 저장소를 공개로 전환하고 GitHub Releases에 실행 파일을 올리며, 웹 버전도 만들 예정입니다. 라이선스와 저작권 고지는 5단계에서 정리합니다. 외부 라이브러리의 고지는 `THIRD_PARTY_NOTICES.md`에 있습니다.
 - 작업 순서는 아래 "작업 순서"를 따릅니다.
 - JPG 저장에 Pillow를 사용합니다(2026-10-30, "라이선스 문제가 없다면 써도 됨"). Windows용 Pillow 13.0.0 wheel의 라이선스 문서를 확인한 결과, 본체(MIT-CMU)와 함께 들어 있는 라이브러리(libjpeg-turbo, FreeType, zlib-ng 등)는 모두 허용형이고 GPL 계열 구성 요소(libimagequant, FriBiDi)는 들어 있지 않았습니다. 실행 파일을 배포할 때 Pillow의 `dist-info/licenses/LICENSE`를 함께 넣어야 합니다(5단계).
-- 저장소 라이선스는 MIT, 저작권자 표기는 `drybulk`입니다(2026-11-02 확정). 외부 라이브러리는 모두 허용형이라 충돌하지 않습니다.
+- 저장소 라이선스는 MIT, 저작권자 표기는 `drybulk`입니다(2026-11-02 확정). 아이콘도 MIT를 따르며, 그림의 출처는 따로 적지 않습니다(2026-11-03 사용자 결정). 외부 라이브러리는 모두 허용형이라 충돌하지 않습니다.
 - "파일 이름으로 북마크 추가"는 기본으로 꺼 둡니다(2026-11-02 확정).
 - 아래쪽 "이미지로 저장" 버튼은 메뉴가 생긴 뒤에도 남겨 둡니다(2026-11-02).
 - 불러오기에서 PDF뿐 아니라 이미지 파일도 쪽으로 불러와 PDF 쪽과 섞어 저장할 수 있게 합니다(2026-11-02 요청). 쪽 크기(A4 너비 맞춤), 지원 형식, 쪽 범위는 PDF에만 적용한다는 점은 기본안으로 구현했고 사용자 확인을 기다리는 중입니다.

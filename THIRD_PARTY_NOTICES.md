@@ -43,7 +43,7 @@ FreeType 문장의 연도는 FreeType 라이선스의 안내에 따라 배포하
 
 ## 프로그램 아이콘
 
-`assets/icon.ico`, `assets/icon.png`, `assets/icon_source.png`는 저장소 관리자가 ChatGPT로 만든 캐릭터 이미지(스프라이트 시트의 첫 장면)에서 얼굴 부분을 잘라 만든 것입니다. 외부 라이브러리나 다른 사람의 저작물이 아니므로, 이 저장소의 다른 파일과 같이 MIT 라이선스를 따릅니다.
+`assets/icon.ico`, `assets/icon.png`, `assets/icon_source.png`는 저장소 관리자가 제공한 그림으로 만들었으며, 이 저장소의 다른 파일과 같이 MIT 라이선스를 따릅니다.
 
 ## 빌드에만 쓰는 도구
 
