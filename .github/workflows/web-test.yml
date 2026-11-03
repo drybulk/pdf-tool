@@ -33,6 +33,10 @@ jobs:
         run: node tests/web/test_web.cjs
       - name: 웹판 기능 테스트 (이미지, 메뉴, 이미지로 저장)
         run: node tests/web/test_web_features.cjs
+      - name: Chrome 확장 (확장을 만들어 설치하고 웹판 테스트를 확장 안에서 실행)
+        env:
+          PYTHONUTF8: "1"
+        run: node tests/web/test_extension.cjs
       - name: 웹판 저장 결과를 데스크톱판과 비교
         env:
           PYTHONUTF8: "1"

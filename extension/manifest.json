@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "PDF 도구",
+  "version": "0.0.0",
+  "description": "PDF 병합, 쪽 추출, 쪽 순서 편집, 이미지 불러오기와 이미지로 저장. 파일은 브라우저 밖으로 나가지 않습니다.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "PDF 도구 열기",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  }
+}
