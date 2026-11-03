@@ -19,6 +19,7 @@ TMP = tempfile.mkdtemp(prefix="pdf_tool_test_")
 BIG, SMALL = make_test_pdfs(TMP)
 import tkinter as tk
 from tkinter import filedialog, messagebox
+import pdf_common
 import pdf_tool as T
 from pypdf import PdfReader
 
@@ -223,6 +224,7 @@ invoke(HELP, "단축키와 마우스 사용법")
 assert msgs[-1][0] == "info" and f"{mod}+O" in msgs[-1][1][1] and "우클릭" in msgs[-1][1][1]
 invoke(HELP, "프로그램 정보")
 text = msgs[-1][1][1]
+assert f"PDF 도구 {pdf_common.APP_VERSION} (경량판)" in text, text
 assert "경량판" in text and "pypdf " in text and "Python" in text and "pypdfium2" not in text, text
 print("9. 도움말 OK")
 

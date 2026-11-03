@@ -193,16 +193,28 @@ def make_zip(app, version):
     return archive
 
 
+def app_version():
+    """pdf_common.APP_VERSION을 읽습니다 (프로그램 정보에 표시되는 버전)."""
+    sys.path.insert(0, str(ROOT))
+    from pdf_common import APP_VERSION
+    return APP_VERSION
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--version", default=os.environ.get("GITHUB_REF_NAME", "dev"),
-                        help="zip 파일 이름에 넣을 버전 (기본: 태그 이름 또는 dev)")
+                        help="zip 파일 이름에 넣을 버전 (기본: 태그 이름 또는 dev). v로 시작하면 APP_VERSION과 같아야 함")
     parser.add_argument("--allow-missing-runtime-licenses", action="store_true",
                         help="Python, Tcl/Tk의 라이선스 문서가 없어도 계속합니다 (시험 빌드용)")
     parser.add_argument("--skip-selftest", action="store_true",
                         help="만든 실행 파일의 자체 검사(--selftest)를 건너뜁니다")
     args = parser.parse_args()
     version = args.version.replace("/", "-")
+    # 릴리스용 버전(v로 시작)은 프로그램 정보에 표시되는 버전과 같아야 합니다.
+    expected = "v" + app_version()
+    if version.startswith("v") and version != expected:
+        fail(f"버전 {version}이(가) pdf_common.APP_VERSION({expected})과 다릅니다. "
+             "pdf_common.py의 APP_VERSION을 먼저 바꾸거나 태그 이름을 고칩니다.")
 
     run_pyinstaller()
     app = BUILD / "dist" / NAME

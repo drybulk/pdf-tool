@@ -36,6 +36,7 @@ HAS_PILLOW = Image is not None
 
 IS_MAC = sys.platform == "darwin"
 UNDO_LIMIT = 100  # 실행 취소로 되돌릴 수 있는 최대 단계 수
+APP_VERSION = "0.1.0"  # 프로그램 버전. "프로그램 정보"에 표시하며, 릴리스 태그는 "v" + 이 값이어야 함 (tools/build_exe.py가 확인)
 MOD = "Cmd" if IS_MAC else "Ctrl"  # 메뉴에 표시하는 단축키 수정자 키 이름
 
 # 쪽으로 불러올 수 있는 이미지 파일의 확장자 (소문자)
@@ -1149,7 +1150,7 @@ class PageTab(ttk.Frame):
         messagebox.showinfo("단축키와 마우스 사용법", "\n".join(self.shortcut_lines()), parent=self)
 
     def about_text(self):
-        lines = [f"{self.APP_NAME} ({self.EDITION})", ""]
+        lines = [f"{self.APP_NAME} {APP_VERSION} ({self.EDITION})", ""]
         for name in self.LIBRARIES:
             try:
                 version = importlib.metadata.version(name)

@@ -124,6 +124,8 @@ start /wait pdf-tool.exe --selftest selftest.txt
 type selftest.txt
 ```
 
+새 버전을 낼 때는 `pdf_common.py`의 `APP_VERSION`을 먼저 바꾸고, 같은 번호의 태그(예: `APP_VERSION = "0.1.0"`이면 `v0.1.0`)를 올립니다. 두 값이 다르면 빌드가 멈춥니다.
+
 GitHub에서는 `.github/workflows/build-exe.yml`이 풀 리퀘스트마다 Windows 실행 파일을 만들어 자체 검사를 하고, `v`로 시작하는 태그를 올리면 zip을 붙인 Release 초안을 만듭니다.
 
 렌더링 속도는 `python tools/bench_render.py 파일.pdf [--pages 100]`으로 측정할 수 있습니다. 썸네일, 미리보기, 200/300 DPI 렌더링의 쪽당 시간을 출력합니다. 각 쪽을 처음 그리는 시간을 따로 보여 주고, 시간이 가장 길었던 쪽 번호와 저장용 PNG를 만드는 시간도 함께 출력합니다.

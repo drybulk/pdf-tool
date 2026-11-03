@@ -58,8 +58,9 @@ def run(result_path):
         state = {}
 
         def versions():
+            from pdf_common import APP_VERSION
             from pdf_tool_render import RenderPageTab
-            return ", ".join(f"{n} {importlib.metadata.version(n)}" for n in RenderPageTab.LIBRARIES)
+            return f"프로그램 {APP_VERSION}, " + ", ".join(f"{n} {importlib.metadata.version(n)}" for n in RenderPageTab.LIBRARIES)
 
         def make_files():
             _make_pdf(pdf_path)
