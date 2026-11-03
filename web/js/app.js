@@ -3,19 +3,25 @@
 
 import { parsePageRanges, PageRangeError } from "./ranges.js";
 import { gatherSelection, slotToPos, shiftSelection, moveSelectionTo } from "./order.js";
-import { openPdf, renderPage, savePages, PdfOpenError } from "./pdfio.js";
+import { openPdf, renderPage, savePages, PdfOpenError, PDFJS_VERSION } from "./pdfio.js";
+import { isImageFile, imageToPdf, ImageError } from "./imageimport.js";
+import { DPI_CHOICES, DEFAULT_DPI, DEFAULT_QUALITY, imageFileNames, encodePng, encodeJpg, makeZip } from "./imageexport.js";
+import { APP_VERSION, PDF_LIB_VERSION } from "./version.js";
 
 const UNDO_LIMIT = 100;      // 실행 취소 최대 단계 수 (데스크톱판과 같음)
 const THUMB_SCALE = 0.12;    // 썸네일 배율 (데스크톱판과 같음)
 const THUMB_CACHE = 300;     // 썸네일 보관 개수 (데스크톱판과 같음)
 const FLASH_MS = 400;        // 옮긴 직후 강조색을 보여 주는 시간
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform);
+const MOD = IS_MAC ? "Cmd" : "Ctrl";
 
 const $ = (id) => document.getElementById(id);
 const el = {
   list: $("list"), rows: $("rows"), indicator: $("indicator"), empty: $("empty"),
   preview: $("preview"), status: $("status"), notice: $("notice"), progress: $("progress"),
   range: $("range"), fileInput: $("file-input"), filename: $("filename"),
+  menubar: $("menubar"), contextMenu: $("context-menu"),
+  keepOutlines: $("keep-outlines"), fileBookmarks: $("file-bookmarks"),
 };
 
 // ---------------------------------------------------------------------------
@@ -29,7 +35,7 @@ let anchor = null;         // Shift+클릭 범위의 기준 행
 let focusId = null;        // 마지막으로 클릭한 행 (미리보기 대상)
 let undoStack = [];        // 작업 직전의 쪽 목록 [{ source, index }, ...]
 let redoStack = [];
-let busy = false;          // 저장 중
+let busy = false;          // 불러오기, 저장 중
 const rowEls = new Map();  // 행 ID -> 행 요소
 
 // 디버그와 자동 시험용으로 상태를 읽을 수 있게 함
@@ -40,6 +46,7 @@ window.pdfTool = {
   pageOf: (id) => { const p = pages.get(id); return p && { file: p.source.name, page: p.index + 1 }; },
   get busy() { return busy; },
   get thumbCacheSize() { return thumbCache.size; },
+  get undoDepth() { return undoStack.length; },
 };
 
 function rowHeight() {
@@ -116,12 +123,11 @@ function updateButtons() {
   const sel = selected.size > 0;
   const set = (id, on) => ($(id).disabled = busy || !on);
   set("open-btn", true);
-  set("undo-btn", undoStack.length > 0);
-  set("redo-btn", redoStack.length > 0);
   for (const id of ["delete-btn", "up-btn", "down-btn", "top-btn", "bottom-btn", "moveto-btn"]) set(id, sel);
   set("selectall-btn", has);
   set("clear-btn", has);
   set("save-btn", has);
+  set("images-btn", has);
 }
 
 /** 선택한 행 중 첫 행이 보이도록 스크롤합니다. */
@@ -213,15 +219,18 @@ async function loadFiles(files) {
     for (const file of files) {
       let indices, source;
       try {
-        if (!/\.pdf$/i.test(file.name) && file.type !== "application/pdf") {
-          throw new PdfOpenError("PDF 파일이 아닙니다.");
+        const image = isImageFile(file.name);
+        if (!image && !/\.pdf$/i.test(file.name) && file.type !== "application/pdf") {
+          throw new PdfOpenError("PDF 또는 이미지 파일이 아닙니다.");
         }
-        const bytes = new Uint8Array(await file.arrayBuffer());
+        let bytes = new Uint8Array(await file.arrayBuffer());
+        // 이미지는 PDF로 바꿔서 PDF와 똑같이 다룸. 쪽 범위는 PDF에만 적용함 (데스크톱판과 같음)
+        if (image) bytes = await imageToPdf(bytes, file.name);
         const doc = await openPdf(bytes);
-        indices = parsePageRanges(rangeText, doc.numPages);
-        source = { name: file.name, bytes, doc };
+        indices = image ? [...Array(doc.numPages).keys()] : parsePageRanges(rangeText, doc.numPages);
+        source = { name: file.name, bytes, doc, image };
       } catch (e) {
-        if (e instanceof PdfOpenError || e instanceof PageRangeError) {
+        if (e instanceof PdfOpenError || e instanceof PageRangeError || e instanceof ImageError) {
           errors.push(`${file.name}: ${e.message}`);
           continue;
         }
@@ -301,10 +310,22 @@ function moveToDialog() {
 // ---------------------------------------------------------------------------
 // 저장
 // ---------------------------------------------------------------------------
+/** Blob을 name이라는 이름으로 내려받게 합니다. */
+function download(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
 async function save() {
   if (busy) return;
   if (!order.length) {
-    notify("저장할 쪽이 없습니다. 먼저 PDF를 불러와 주세요.");
+    notify("저장할 쪽이 없습니다. 먼저 PDF나 이미지를 불러와 주세요.");
     return;
   }
   let name = el.filename.value.trim() || "extracted.pdf";
@@ -314,15 +335,9 @@ async function save() {
   updateButtons();
   el.progress.value = 0;
   try {
-    const bytes = await savePages(list, (n, total) => (el.progress.value = Math.round((n / total) * 90)));
-    const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = name;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    const options = { keepOutlines: el.keepOutlines.checked, fileBookmarks: el.fileBookmarks.checked };
+    const bytes = await savePages(list, options, (n, total) => (el.progress.value = Math.round((n / total) * 90)));
+    download(new Blob([bytes], { type: "application/pdf" }), name);
     el.progress.value = 100;
     notify(`저장이 완료되었습니다. 총 ${list.length}쪽\n${name} (브라우저의 다운로드 폴더를 확인해 주세요)`);
   } catch (e) {
@@ -630,6 +645,372 @@ $("splitter").addEventListener("pointerdown", (ev) => {
 });
 
 // ---------------------------------------------------------------------------
+// 이미지로 저장 (데스크톱판 렌더링판의 save_images, ImageSaveDialog와 같은 선택지)
+// ---------------------------------------------------------------------------
+const imageDialog = {
+  dialog: $("image-dialog"), form: $("image-form"), quality: $("jpg-quality"), dpi: $("dpi"),
+  error: $("image-error"), cancel: $("image-cancel"),
+};
+for (const dpi of DPI_CHOICES) imageDialog.dpi.add(new Option(String(dpi), String(dpi), false, dpi === DEFAULT_DPI));
+
+/** 이미지 저장 대화 상자를 띄우고, 고른 옵션 { scope, format, dpi, quality } 또는 취소하면 null을 돌려줍니다. */
+function askImageOptions(nSelected, nAll) {
+  const d = imageDialog;
+  const radio = (name, value) => d.form.querySelector(`input[name="${name}"][value="${value}"]`);
+  $("scope-selected-label").textContent = `선택한 쪽 (${nSelected}쪽)`;
+  $("scope-all-label").textContent = `목록 전체 (${nAll}쪽)`;
+  radio("scope", "selected").disabled = nSelected === 0;
+  radio("scope", nSelected ? "selected" : "all").checked = true;
+  d.error.hidden = true;
+  return new Promise((resolve) => {
+    let result = null;
+    const onSubmit = (ev) => {
+      const format = d.form.querySelector('input[name="format"]:checked').value;
+      const quality = Number(d.quality.value);
+      if (format === "jpg" && !(Number.isInteger(quality) && quality >= 1 && quality <= 95)) {
+        ev.preventDefault();
+        d.error.textContent = "JPG 품질은 1부터 95 사이의 숫자로 입력해 주세요.";
+        d.error.hidden = false;
+        d.quality.focus();
+        return;
+      }
+      result = {
+        scope: d.form.querySelector('input[name="scope"]:checked').value,
+        format, quality, dpi: Number(d.dpi.value),
+      };
+    };
+    const onCancel = () => d.dialog.close();
+    const onClose = () => {
+      d.form.removeEventListener("submit", onSubmit);
+      d.cancel.removeEventListener("click", onCancel);
+      d.dialog.removeEventListener("close", onClose);
+      resolve(result);
+    };
+    d.form.addEventListener("submit", onSubmit);
+    d.cancel.addEventListener("click", onCancel);
+    d.dialog.addEventListener("close", onClose);
+    d.dialog.showModal();
+  });
+}
+
+const stemOf = (name) => name.replace(/\.[^.]*$/, "");
+
+async function saveImages() {
+  if (busy) return;
+  if (!order.length) {
+    notify("저장할 쪽이 없습니다. 먼저 PDF나 이미지를 불러와 주세요.");
+    return;
+  }
+  const opts = await askImageOptions(selected.size, order.length);
+  if (!opts || busy) return;
+  const ids = opts.scope === "selected" ? order.filter((id) => selected.has(id)) : order.slice();
+  if (!ids.length) return;
+  const list = ids.map((id) => pages.get(id));
+  const ext = opts.format;
+  const names = imageFileNames(list.map((p) => ({ name: p.source.name, index: p.index })), ext);
+  busy = true;
+  updateButtons();
+  el.progress.value = 0;
+  const files = [];
+  let failed = null;
+  try {
+    for (let i = 0; i < list.length; i++) {
+      const p = list[i];
+      try {
+        const canvas = await renderPage(p.source.doc, p.index, opts.dpi / 72).promise;
+        const data = ext === "png" ? await encodePng(canvas, opts.dpi) : await encodeJpg(canvas, opts.dpi, opts.quality);
+        canvas.width = canvas.height = 0; // 큰 그림의 메모리를 바로 돌려줌
+        files.push({ name: names[i], data });
+      } catch (e) {
+        failed = `${p.source.name} ${p.index + 1}쪽: ${e && e.message ? e.message : e}`;
+        break;
+      }
+      el.progress.value = Math.round(((i + 1) / list.length) * 95);
+    }
+    if (failed) {
+      notify(`이미지 저장 실패\n${failed}\n\n내려받은 파일은 없습니다.`, "error");
+      return;
+    }
+    let name;
+    if (files.length === 1) {
+      name = files[0].name;
+      download(new Blob([files[0].data], { type: ext === "png" ? "image/png" : "image/jpeg" }), name);
+    } else {
+      // 브라우저는 폴더에 여러 파일을 바로 쓸 수 없으므로 zip 하나로 내려받음
+      const sources = new Set(list.map((p) => p.source));
+      const stem = sources.size === 1 ? stemOf(list[0].source.name) : stemOf(el.filename.value.trim() || "extracted.pdf");
+      name = `${stem}_images.zip`;
+      download(makeZip(files), name);
+    }
+    el.progress.value = 100;
+    notify(`이미지 ${files.length}개를 저장했습니다.\n${name} (브라우저의 다운로드 폴더를 확인해 주세요)`);
+  } finally {
+    busy = false;
+    updateButtons();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 도움말
+// ---------------------------------------------------------------------------
+function showInfo(title, lines) {
+  $("info-title").textContent = title;
+  const table = document.createElement("table");
+  for (const line of lines) {
+    const tr = table.insertRow();
+    const [a, b] = line.split("\t");
+    if (b === undefined) {
+      const td = tr.insertCell();
+      td.colSpan = 2;
+      td.textContent = a || " ";
+    } else {
+      tr.insertCell().textContent = a;
+      tr.insertCell().textContent = b;
+    }
+  }
+  $("info-body").replaceChildren(table);
+  $("info-dialog").showModal();
+}
+$("info-close").addEventListener("click", () => $("info-dialog").close());
+
+function showShortcuts() {
+  showInfo("단축키와 마우스 사용법", [
+    `${MOD}+O\tPDF/이미지 불러오기`,
+    `${MOD}+S\t새 PDF로 저장`,
+    `${MOD}+Z\t실행 취소 (최대 ${UNDO_LIMIT}단계)`,
+    `${MOD}+Y, ${MOD}+Shift+Z\t다시 실행`,
+    `${MOD}+A\t전체 선택 (쪽 목록에서)`,
+    "Delete\t선택 삭제 (쪽 목록에서)",
+    "",
+    "마우스로 행을 끌기\t순서 바꾸기 (선택한 쪽들이 놓은 위치에 모임)",
+    `${MOD}+클릭\t쪽을 하나씩 선택에 더하거나 빼기`,
+    "Shift+클릭\t범위 선택",
+    "우클릭\t쪽 메뉴 (이 파일의 쪽 모두 선택, 이동, 삭제, 이미지로 저장)",
+    "파일을 창에 끌어다 놓기\t불러오기",
+  ]);
+}
+
+function showAbout() {
+  showInfo("프로그램 정보", [
+    `PDF 도구 ${APP_VERSION} (웹판)`,
+    "",
+    `pdf.js\t${PDFJS_VERSION}`,
+    `pdf-lib (@cantoo/pdf-lib)\t${PDF_LIB_VERSION}`,
+    `브라우저\t${navigator.userAgent}`,
+    "",
+    "파일은 이 브라우저 안에서만 처리하며 어디에도 올리지 않습니다.",
+  ]);
+}
+
+// ---------------------------------------------------------------------------
+// 메뉴 막대와 우클릭 메뉴 (데스크톱판 menu_items, context_menu_items와 같은 구성)
+// 항목은 [이름, 동작, 단축키 표시, 조건] 또는 null(구분선)입니다. 조건은 데스크톱판 _menu_condition과 같습니다.
+// ---------------------------------------------------------------------------
+let contextRow = null;  // 우클릭한 행 ID (행이 아닌 곳이면 null)
+
+const openFiles = () => { if (!busy) el.fileInput.click(); };
+const moveItems = () => [
+  ["위로", () => shift(-1), null, "selection"],
+  ["아래로", () => shift(1), null, "selection"],
+  ["맨 위로", () => moveTo(1), null, "selection"],
+  ["맨 아래로", () => moveTo(Number.MAX_SAFE_INTEGER), null, "selection"],
+  ["위치 지정 이동...", moveToDialog, null, "selection"],
+];
+
+function menuItems() {
+  return [
+    ["파일", [
+      ["PDF/이미지 불러오기...", openFiles, `${MOD}+O`, null],
+      ["새 PDF로 저장...", save, `${MOD}+S`, "rows"],
+      ["이미지로 저장...", saveImages, null, "rows"],
+    ]],
+    ["편집", [
+      ["실행 취소", undo, `${MOD}+Z`, "undo"],
+      ["다시 실행", redo, `${MOD}+Y`, "redo"],
+      null,
+      ["전체 선택", selectAll, `${MOD}+A`, "rows"],
+      ["선택 삭제", deleteSelected, "Delete", "selection"],
+      null,
+      ...moveItems(),
+      null,
+      ["목록 비우기", clearAll, null, "rows"],
+    ]],
+    ["도움말", [
+      ["단축키와 마우스 사용법", showShortcuts, null, "always"],
+      ["프로그램 정보", showAbout, null, "always"],
+    ]],
+  ];
+}
+
+function contextMenuItems() {
+  const p = contextRow && pages.get(contextRow);
+  return [
+    [p ? `이 파일의 쪽 모두 선택 (${p.source.name})` : "이 파일의 쪽 모두 선택", selectFilePages, null, "row"],
+    null,
+    ...moveItems(),
+    null,
+    ["선택 삭제", deleteSelected, "Delete", "selection"],
+    null,
+    ["이미지로 저장...", saveImages, null, "rows"],
+  ];
+}
+
+function menuCondition(cond) {
+  if (cond === "always") return true;
+  if (busy) return false;
+  if (cond === "rows") return order.length > 0;
+  if (cond === "selection") return selected.size > 0;
+  if (cond === "undo") return undoStack.length > 0;
+  if (cond === "redo") return redoStack.length > 0;
+  if (cond === "row") return contextRow !== null && pages.has(contextRow);
+  return true;
+}
+
+/** 메뉴 요소(box)를 items로 채웁니다. 항목의 사용 가능 여부는 채울 때 정합니다(메뉴를 열 때마다 다시 채움). */
+function fillMenu(box, items) {
+  box.replaceChildren();
+  for (const item of items) {
+    if (!item) {
+      box.appendChild(document.createElement("hr"));
+      continue;
+    }
+    const [label, action, accel, cond] = item;
+    const b = document.createElement("button");
+    b.type = "button";
+    b.setAttribute("role", "menuitem");
+    b.dataset.label = label;
+    const text = document.createElement("span");
+    text.textContent = label;
+    b.appendChild(text);
+    if (accel) {
+      const a = document.createElement("span");
+      a.className = "accel";
+      a.textContent = accel;
+      b.appendChild(a);
+    }
+    b.disabled = !menuCondition(cond);
+    b.addEventListener("click", () => {
+      closeMenus();
+      action();
+    });
+    box.appendChild(b);
+  }
+}
+
+const dropdown = document.createElement("div"); // 메뉴 막대에서 연 메뉴
+dropdown.className = "menu";
+dropdown.id = "dropdown-menu";
+dropdown.setAttribute("role", "menu");
+dropdown.hidden = true;
+document.body.appendChild(dropdown);
+let openTop = null; // 열려 있는 메뉴 막대 단추
+
+/** 메뉴를 (x, y)에 띄우되 창 밖으로 나가지 않게 합니다. */
+function placeMenu(box, x, y) {
+  box.hidden = false;
+  box.style.left = "0px";
+  box.style.top = "0px";
+  const r = box.getBoundingClientRect();
+  box.style.left = `${Math.max(0, Math.min(x, window.innerWidth - r.width - 2))}px`;
+  box.style.top = `${Math.max(0, Math.min(y, window.innerHeight - r.height - 2))}px`;
+}
+
+function openTopMenu(button) {
+  closeMenus();
+  const items = menuItems().find(([name]) => name === button.dataset.menu)[1];
+  fillMenu(dropdown, items);
+  const r = button.getBoundingClientRect();
+  placeMenu(dropdown, r.left, r.bottom);
+  button.setAttribute("aria-expanded", "true");
+  openTop = button;
+}
+
+function closeMenus() {
+  dropdown.hidden = true;
+  el.contextMenu.hidden = true;
+  if (openTop) openTop.setAttribute("aria-expanded", "false");
+  openTop = null;
+}
+
+for (const [name] of menuItems()) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.textContent = name;
+  b.dataset.menu = name;
+  b.setAttribute("aria-haspopup", "menu");
+  b.setAttribute("aria-expanded", "false");
+  b.addEventListener("click", () => (openTop === b ? closeMenus() : openTopMenu(b)));
+  // 메뉴 하나가 열려 있으면 다른 메뉴 이름에 마우스를 올리는 것만으로 바꿔 엶
+  b.addEventListener("pointerenter", () => { if (openTop && openTop !== b) openTopMenu(b); });
+  el.menubar.appendChild(b);
+}
+
+/** 우클릭한 행과 같은 파일의 쪽을 모두 선택합니다 (데스크톱판 select_file_pages). */
+function selectFilePages() {
+  const p = contextRow && pages.get(contextRow);
+  if (!p) return;
+  selected = new Set(order.filter((id) => pages.get(id).source === p.source));
+  updateSelectionView();
+}
+
+el.list.addEventListener("contextmenu", (ev) => {
+  ev.preventDefault();
+  if (drag.active) return; // 끄는 중에는 띄우지 않음
+  closeMenus();
+  const id = rowIdAt(ev.clientY);
+  contextRow = id;
+  // 이미 선택된 행이면 선택을 유지하고, 아니면 그 행만 선택 (데스크톱판 select_for_context)
+  if (id) {
+    if (!selected.has(id)) {
+      selected = new Set([id]);
+      anchor = id;
+      updateSelectionView();
+    }
+    setFocus(id);
+  }
+  fillMenu(el.contextMenu, contextMenuItems());
+  placeMenu(el.contextMenu, ev.clientX, ev.clientY);
+});
+
+// 메뉴 밖을 누르면 닫음
+document.addEventListener("pointerdown", (ev) => {
+  if (dropdown.hidden && el.contextMenu.hidden) return;
+  if (dropdown.contains(ev.target) || el.contextMenu.contains(ev.target) || el.menubar.contains(ev.target)) return;
+  closeMenus();
+}, true);
+window.addEventListener("blur", closeMenus);
+window.addEventListener("resize", closeMenus);
+
+/** 열린 메뉴 안에서 위/아래 화살표로 항목을 옮겨 다님. 처리했으면 true */
+function menuKey(ev) {
+  const box = !dropdown.hidden ? dropdown : !el.contextMenu.hidden ? el.contextMenu : null;
+  if (!box) return false;
+  if (ev.key === "Escape") {
+    const top = openTop;
+    closeMenus();
+    if (top) top.focus();
+    return true;
+  }
+  if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+    const items = [...box.querySelectorAll("button:not(:disabled)")];
+    if (items.length) {
+      const i = items.indexOf(document.activeElement);
+      const next = ev.key === "ArrowDown" ? (i + 1) % items.length : (i <= 0 ? items.length - 1 : i - 1);
+      items[next].focus();
+    }
+    return true;
+  }
+  if (ev.key === "ArrowLeft" || ev.key === "ArrowRight") {
+    if (!openTop) return true;
+    const tops = [...el.menubar.children];
+    const next = tops[(tops.indexOf(openTop) + (ev.key === "ArrowRight" ? 1 : tops.length - 1)) % tops.length];
+    openTopMenu(next);
+    return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
 // 키보드
 // ---------------------------------------------------------------------------
 function isTyping(target) {
@@ -639,6 +1020,12 @@ function isTyping(target) {
 document.addEventListener("keydown", (ev) => {
   const mod = IS_MAC ? ev.metaKey : ev.ctrlKey;
   const key = ev.key.toLowerCase();
+  if (document.querySelector("dialog[open]")) {
+    // 대화 상자가 떠 있으면 본 화면의 단축키는 처리하지 않음 (데스크톱판에서 다른 창의 키를 무시하는 것과 같음)
+    if (mod && (key === "o" || key === "s")) ev.preventDefault(); // 브라우저 자체의 열기/저장 창도 띄우지 않음
+    return;
+  }
+  if (menuKey(ev)) { ev.preventDefault(); return; }
   if (mod && key === "o") { ev.preventDefault(); if (!busy) el.fileInput.click(); return; }
   if (mod && key === "s") { ev.preventDefault(); save(); return; }
   if (isTyping(ev.target)) {
@@ -673,8 +1060,6 @@ el.fileInput.addEventListener("change", async () => {
   el.fileInput.value = ""; // 같은 파일을 다시 고를 수 있도록
   await loadFiles(files);
 });
-$("undo-btn").addEventListener("click", undo);
-$("redo-btn").addEventListener("click", redo);
 $("delete-btn").addEventListener("click", deleteSelected);
 $("up-btn").addEventListener("click", () => shift(-1));
 $("down-btn").addEventListener("click", () => shift(1));
@@ -684,6 +1069,7 @@ $("moveto-btn").addEventListener("click", moveToDialog);
 $("selectall-btn").addEventListener("click", selectAll);
 $("clear-btn").addEventListener("click", clearAll);
 $("save-btn").addEventListener("click", save);
+$("images-btn").addEventListener("click", () => saveImages());
 
 let dragDepth = 0;
 const hasFiles = (ev) => ev.dataTransfer && [...ev.dataTransfer.types].includes("Files");

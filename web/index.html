@@ -11,16 +11,15 @@
 </head>
 <body>
   <div id="app">
+    <nav id="menubar" class="menubar" role="menubar" aria-label="메뉴 막대"></nav>
     <header class="toolbar">
       <label for="range">불러올 쪽 범위:</label>
-      <input id="range" type="text" autocomplete="off" spellcheck="false">
-      <button id="open-btn" type="button">PDF 불러오기</button>
-      <input id="file-input" type="file" accept=".pdf,application/pdf" multiple hidden>
-      <span class="sep"></span>
-      <button id="undo-btn" type="button" title="실행 취소 (Ctrl+Z)">실행 취소</button>
-      <button id="redo-btn" type="button" title="다시 실행 (Ctrl+Y)">다시 실행</button>
+      <input id="range" type="text" autocomplete="off" spellcheck="false" placeholder="예: 1-3, 10 (비우면 전체)">
+      <button id="open-btn" type="button">PDF/이미지 불러오기</button>
+      <input id="file-input" type="file" accept=".pdf,application/pdf,.png,.jpg,.jpeg,.bmp,.gif,.tif,.tiff,.webp,image/*" multiple hidden>
     </header>
     <p class="hint">범위 예: 721-732 / 1-3, 10, 15-20 / 5- (비워 두면 전체). 쪽 번호는 PDF 뷰어의 쪽 번호 기준입니다.
+      이미지(PNG, JPG 등)는 1장을 1쪽(A4 너비)으로 불러오며, 쪽 범위는 PDF에만 적용합니다.
       파일을 이 창으로 끌어다 놓아도 불러옵니다. 파일은 이 컴퓨터의 브라우저 안에서만 처리하며 어디에도 올리지 않습니다.</p>
 
     <main class="body">
@@ -31,7 +30,7 @@
         <div id="list" class="list" tabindex="0" role="listbox" aria-multiselectable="true">
           <div id="rows"></div>
           <div id="indicator" class="indicator" hidden></div>
-          <div id="empty" class="empty">PDF 불러오기 버튼을 누르거나 PDF 파일을 끌어다 놓으세요.</div>
+          <div id="empty" class="empty">PDF/이미지 불러오기 버튼을 누르거나 파일을 끌어다 놓으세요.</div>
         </div>
       </section>
       <div id="splitter" class="splitter" title="끌어서 폭 조절"></div>
@@ -50,15 +49,55 @@
 
     <p class="hint">행을 마우스로 끌어 순서를 바꿀 수 있습니다. Ctrl/Shift+클릭으로 여러 쪽을 선택해 함께 옮길 수 있습니다.
       여러 PDF를 불러오면 목록 순서대로 이어 붙여 하나의 PDF로 저장합니다.</p>
+    <div class="options">
+      <label><input id="keep-outlines" type="checkbox" checked> 원본 북마크(목차) 유지</label>
+      <label><input id="file-bookmarks" type="checkbox"> 파일 이름으로 북마크 추가</label>
+    </div>
     <div id="notice" class="notice" hidden></div>
     <footer class="bottom">
       <span id="status">총 0쪽</span>
       <span class="grow"></span>
       <label for="filename">파일 이름:</label>
       <input id="filename" type="text" value="extracted.pdf" spellcheck="false">
+      <button id="images-btn" type="button">이미지로 저장</button>
       <button id="save-btn" type="button" class="primary">새 PDF로 저장</button>
     </footer>
     <progress id="progress" max="100" value="0"></progress>
   </div>
+
+  <div id="context-menu" class="menu" role="menu" hidden></div>
+
+  <dialog id="image-dialog" aria-labelledby="image-dialog-title">
+    <form method="dialog" id="image-form" novalidate>
+      <h2 id="image-dialog-title">이미지로 저장</h2>
+      <fieldset>
+        <legend>저장할 쪽</legend>
+        <label><input type="radio" name="scope" value="selected"> <span id="scope-selected-label">선택한 쪽</span></label>
+        <label><input type="radio" name="scope" value="all"> <span id="scope-all-label">목록 전체</span></label>
+      </fieldset>
+      <fieldset>
+        <legend>형식</legend>
+        <label><input type="radio" name="format" value="png" checked> PNG (무손실)</label>
+        <label><input type="radio" name="format" value="jpg"> JPG</label>
+        <label class="inline">품질 (1~95): <input id="jpg-quality" type="number" min="1" max="95" step="1" value="90"></label>
+      </fieldset>
+      <fieldset>
+        <legend>해상도</legend>
+        <label class="inline">DPI: <select id="dpi"></select></label>
+      </fieldset>
+      <p class="hint">여러 장은 zip 파일 하나로 내려받습니다. 파일 이름은 "원본이름_p0001.png"처럼 원본 쪽 번호를 씁니다.</p>
+      <p id="image-error" class="dialog-error" hidden></p>
+      <div class="dialog-buttons">
+        <button type="button" id="image-cancel">취소</button>
+        <button type="submit" id="image-ok" class="primary" value="ok">저장</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="info-dialog" aria-labelledby="info-title">
+    <h2 id="info-title"></h2>
+    <div id="info-body" class="info-body"></div>
+    <div class="dialog-buttons"><button type="button" id="info-close" class="primary">닫기</button></div>
+  </dialog>
 </body>
 </html>

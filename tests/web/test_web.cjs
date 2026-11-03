@@ -135,7 +135,7 @@ async function main() {
     await page.waitForSelector("#notice:not([hidden])");
     const notice = await page.textContent("#notice");
     assert(notice.includes("C.pdf") && notice.includes("벗어납니다"), "C.pdf 범위 오류 안내: " + notice);
-    assert(notice.includes("note.txt") && notice.includes("PDF 파일이 아닙니다"), "PDF가 아닌 파일 안내: " + notice);
+    assert(notice.includes("note.txt") && notice.includes("PDF 또는 이미지 파일이 아닙니다"), "PDF가 아닌 파일 안내: " + notice);
     eq((await state()).order.slice(7), ["B23", "B21"], "범위대로 추가");
     await page.fill("#range", "");
     console.log("4. 범위 지정, 오류 안내 OK");
