@@ -19,6 +19,12 @@
 
 데스크톱판에 있고 웹판에 없는 것: 프로그램 종료 메뉴(브라우저 탭을 닫으면 됨), TIFF 불러오기, 비밀번호가 있는 PDF 열기(데스크톱판도 지원하지 않음).
 
+## 인터넷에서 바로 쓰기
+
+https://drybulk.github.io/pdf-tool/ 에서 설치 없이 쓸 수 있습니다. 파일은 이때도 브라우저 안에서만 처리하며 어디에도 올리지 않습니다. 개인정보 처리방침은 [privacy.html](privacy.html)(https://drybulk.github.io/pdf-tool/privacy.html)에 있습니다.
+
+main에 `web/`의 변경이 올라오면 `.github/workflows/pages.yml`이 `web/`의 파일(README.md 제외)을 그대로 GitHub Pages에 올립니다. 처음 한 번은 저장소의 Settings > Pages에서 Source를 "GitHub Actions"로 정해야 합니다.
+
 ## 내 컴퓨터에서 실행하기
 
 `index.html`을 두 번 클릭해서 열면 동작하지 않습니다. 브라우저가 `file://`로 연 페이지에서는 JavaScript 모듈과 작업 스레드(worker)를 막기 때문입니다. 아래처럼 간단한 웹 서버를 켜고 엽니다.
@@ -53,6 +59,7 @@ python tools/build_extension.py
 ## 구성
 
 - `index.html`, `style.css`: 화면
+- `privacy.html`: 개인정보 처리방침(한국어, 영어). Chrome 웹 스토어 신고에 이 주소를 씁니다.
 - `js/app.js`: 화면 동작 (데스크톱판 `PageTab`, `DragTree`에 해당)
 - `js/ranges.js`: 쪽 범위 해석 (`parse_page_ranges`와 같은 규칙)
 - `js/order.js`: 순서 변경 규칙 (모으기, 위로/아래로, 위치 지정)
