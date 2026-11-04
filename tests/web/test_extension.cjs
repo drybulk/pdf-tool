@@ -95,8 +95,10 @@ async function main() {
     assert(fs.readFileSync(path.join(REPO, "web", f)).equals(fs.readFileSync(path.join(OUT, f))), "web/ 파일 내용이 같음: " + f);
   }
   // 인라인 스크립트가 없음 (확장의 보안 정책은 인라인 스크립트를 막음)
-  const html = fs.readFileSync(path.join(OUT, "index.html"), "utf8");
-  assert(!/<script(?![^>]*\bsrc=)[^>]*>/i.test(html) && !/\son[a-z]+=/i.test(html), "index.html에 인라인 스크립트나 on... 속성이 없음");
+  for (const name of ["index.html", "privacy.html"]) {
+    const html = fs.readFileSync(path.join(OUT, name), "utf8");
+    assert(!/<script(?![^>]*\bsrc=)[^>]*>/i.test(html) && !/\son[a-z]+=/i.test(html), `${name}에 인라인 스크립트나 on... 속성이 없음`);
+  }
   // 스토어용 zip: 폴더와 같은 파일, manifest.json이 맨 위
   const zipPath = path.join(REPO, "build", `pdf-tool-extension-${appVersion}.zip`);
   eq(zipNames(fs.readFileSync(zipPath)), extFiles, "스토어용 zip의 파일 목록");

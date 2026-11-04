@@ -1,0 +1,42 @@
+# 웹판(web/)을 GitHub Pages에 게시합니다. main에 web/ 변경이 올라오거나 수동으로 실행하면 동작합니다.
+# 빌드 과정 없이 web/의 파일을 그대로 올립니다(web/README.md는 제외).
+# 처음 한 번은 저장소의 Settings > Pages에서 Source를 "GitHub Actions"로 정해야 합니다.
+name: 웹판 게시 (GitHub Pages)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 게시가 겹치면 앞의 것을 기다렸다가 마지막 것만 올립니다.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: 게시할 파일 모으기
+        run: |
+          mkdir _site
+          cp -r web/. _site/
+          rm -f _site/README.md
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
